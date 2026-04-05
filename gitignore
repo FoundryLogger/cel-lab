@@ -1,0 +1,17 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (not needed, but just in case)
+node_modules/
+package-lock.json
+
+# Build artifacts
+_check.js
+_app_code.js
