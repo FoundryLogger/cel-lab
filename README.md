@@ -19,9 +19,7 @@
 ---
 
 <p align="center">
-  <a href="https://youtu.be/lRYcbJxX4bI">
-    <img src="https://img.youtube.com/vi/lRYcbJxX4bI/maxresdefault.jpg" alt="Watch the video" width="70%">
-  </a>
+  <strong><a href="https://youtu.be/lRYcbJxX4bI">▶ Watch the video</a></strong>
 </p>
 
 <p align="center">
