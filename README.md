@@ -19,9 +19,9 @@
 ---
 
 <p align="center">
-  <img src="media/cel-lab.gif" alt="Cel-Lab demo" width="32%">
-  <img src="media/fireball.gif" alt="Fireball effect" width="32%">
-  <img src="media/flower.gif" alt="Flower effect" width="32%">
+  <img src="media/cel-lab.gif" alt="Cel-Lab demo" height="1072">
+  <img src="media/fireball.gif" alt="Fireball effect" height="1072">
+  <img src="media/flower.gif" alt="Flower effect" height="1072">
 </p>
 
 ---
