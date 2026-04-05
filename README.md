@@ -36,7 +36,7 @@ A browser-based procedural VFX editor for creating stylized cel-shade effects �
 
 Everything runs client-side in a single HTML file with Three.js r128 embedded inline. No build step, no npm, no server. Double-click and go.
 
-**→ [Open cel-lab](https://255bit.it/cel-lab)**
+**→ [Open cel-lab](https://www.255bit.it/cel-lab.html)**
 
 ---
 
