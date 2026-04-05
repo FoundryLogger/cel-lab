@@ -18,6 +18,14 @@
 
 ---
 
+<p align="center">
+  <img src="media/cel-lab.gif" alt="Cel-Lab demo" width="32%">
+  <img src="media/fireball.gif" alt="Fireball effect" width="32%">
+  <img src="media/flower.gif" alt="Flower effect" width="32%">
+</p>
+
+---
+
 ## What is this?
 
 A browser-based procedural VFX editor for creating stylized cel-shade effects — fire, energy, crystals, plasma, organic matter, portals, and anything you can imagine. Design your effect visually with real-time 3D feedback, then export it directly into your game engine or web project.
