@@ -194,7 +194,7 @@ Issues and PRs welcome. It's a single HTML file — fork it, break it, make it b
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+GPL-3.0-or-later — see [LICENSE](LICENSE)
 
 ---
 
