@@ -19,6 +19,12 @@
 ---
 
 <p align="center">
+  <a href="https://youtu.be/lRYcbJxX4bI">
+    <img src="https://img.youtube.com/vi/lRYcbJxX4bI/maxresdefault.jpg" alt="Watch the video" width="70%">
+  </a>
+</p>
+
+<p align="center">
   <img src="media/cel-lab.gif" alt="Cel-Lab demo" width="32%" height="1072">
   <img src="media/fireball.gif" alt="Fireball effect" width="32%" height="1072">
   <img src="media/flower.gif" alt="Flower effect" width="32%" height="1072">
