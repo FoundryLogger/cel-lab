@@ -574,6 +574,14 @@ body{background:var(--bg);overflow:hidden;display:flex;font-family:'SF Mono','Ca
         <div class="param"><label>Grid cols</label><select id="expCols"><option value="auto" selected>Auto</option><option value="2">2</option><option value="4">4</option><option value="8">8</option></select></div>
       </div></div>
       <div style="padding:6px 10px">
+        <div style="font-size:10px;color:var(--dim);margin-bottom:3px">Camera</div>
+        <div class="cam-row">
+          <button class="cam-btn" onclick="setCam(0,Math.PI/2,'Front',this)">Front</button>
+          <button class="cam-btn" onclick="setCam(Math.PI/2,Math.PI/2,'Side',this)">Side</button>
+          <button class="cam-btn" onclick="setCam(Math.PI/4,1.15,'3/4',this)">3/4</button>
+          <button class="cam-btn" onclick="setCam(0,0.35,'Top',this)">Top</button>
+          <button class="cam-btn" id="camLockBtn2" onclick="toggleCamLock()">🔓 Free</button>
+        </div>
         <canvas id="previewCanvas" width="128" height="128"></canvas>
         <div style="display:flex;gap:4px">
           <button class="btn btn-green" style="flex:2" onclick="doCapture()" id="captureBtn">EXPORT ASSET</button>
@@ -4330,7 +4338,8 @@ const THUMB_SIZE          = 48;
 const LIGHT_BASE          = 2.3;
 const LIGHT_FLICKER       = 0.4;
 const LIGHT_FREQ          = 8;
-const ORBIT_SPEED         = 0.003;
+let ORBIT_SPEED           = 0.003;
+let autoRotate            = true;
 const ORBIT_SENSITIVITY   = 0.005;
 const SCENE_BG            = 0x050508;
 const UPR_STORAGE_KEY     = 'cel-editor-user-presets';
@@ -5699,7 +5708,7 @@ const scene=new THREE.Scene();scene.background=new THREE.Color(SCENE_BG);
 const camera=new THREE.PerspectiveCamera(45,1,0.1,100);camera.position.set(0,0.5,5);camera.lookAt(0,0,0);
 const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 container.appendChild(renderer.domElement);
-const camOverlay=document.createElement('div');camOverlay.className='cam-overlay';camOverlay.innerHTML='<button class="cam-btn" onclick="setCam(0,Math.PI/2,\'Front\',this)">Front</button><button class="cam-btn" onclick="setCam(Math.PI/2,Math.PI/2,\'Side\',this)">Side</button><button class="cam-btn" onclick="setCam(Math.PI/4,1.15,\'3/4\',this)">3/4</button><button class="cam-btn" onclick="setCam(0,0.35,\'Top\',this)">Top</button><button class="cam-btn" id="camLockBtn" onclick="toggleCamLock()">\u{1F513} Free</button>';container.appendChild(camOverlay);
+const camOverlay=document.createElement('div');camOverlay.className='cam-overlay';camOverlay.innerHTML='<button class="cam-btn" onclick="setCam(0,Math.PI/2,\'Front\',this)">Front</button><button class="cam-btn" onclick="setCam(Math.PI/2,Math.PI/2,\'Side\',this)">Side</button><button class="cam-btn" onclick="setCam(Math.PI/4,1.15,\'3/4\',this)">3/4</button><button class="cam-btn" onclick="setCam(0,0.35,\'Top\',this)">Top</button><button class="cam-btn" id="camLockBtn" onclick="toggleCamLock()">\u{1F513} Free</button><span style="width:1px;background:var(--border);margin:0 4px"></span><button class="cam-btn" id="autoRotBtn" onclick="autoRotate=!autoRotate;this.classList.toggle(\'active\',autoRotate);this.textContent=autoRotate?\'\\u21BB On\':\'\\u21BB Off\'" class="cam-btn active">\u21BB On</button><input type="range" min="0" max="20" step="1" value="3" style="width:50px;height:14px;accent-color:var(--accent)" title="Orbit speed" oninput="ORBIT_SPEED=this.value*0.001">';container.appendChild(camOverlay);
 let rtScene,rtBright,rtBlurH,rtBlurV,rtTrailA,rtTrailB;let trailFlip=false;
 /** Create or recreate render targets at given resolution */
 /** Create or recreate render targets at given resolution */
@@ -6632,16 +6641,18 @@ window.addEventListener('touchmove',e=>{if(!drag||camLocked)return;angles.theta-
 
 // Camera presets & preview
 /** Set camera preset angle and lock orbit */
+function syncLockBtns(){
+  const txt=camLocked?'🔒 Locked':'🔓 Free';
+  document.querySelectorAll('#camLockBtn,#camLockBtn2').forEach(b=>{if(b){b.textContent=txt;b.classList.toggle('active',camLocked);}});
+}
 function setCam(theta,phi,name,el){angles.theta=theta;angles.phi=phi;camLocked=true;
-  document.getElementById('camLockBtn').textContent='🔒 Locked';
-  document.getElementById('camLockBtn').classList.add('active');
-  document.querySelectorAll('.cam-btn').forEach(b=>{if(b.id!=='camLockBtn')b.classList.remove('active');});
+  syncLockBtns();
+  document.querySelectorAll('.cam-btn').forEach(b=>{if(b.id!=='camLockBtn'&&b.id!=='camLockBtn2')b.classList.remove('active');});
   if (el)el.classList.add('active');}
 /** Toggle free/locked camera orbit */
 function toggleCamLock(){camLocked=!camLocked;
-  document.getElementById('camLockBtn').textContent=camLocked?'🔒 Locked':'🔓 Free';
-  document.getElementById('camLockBtn').classList.toggle('active',camLocked);
-  if (!camLocked)document.querySelectorAll('.cam-btn').forEach(b=>{if(b.id!=='camLockBtn')b.classList.remove('active');});}
+  syncLockBtns();
+  if (!camLocked)document.querySelectorAll('.cam-btn').forEach(b=>{if(b.id!=='camLockBtn'&&b.id!=='camLockBtn2')b.classList.remove('active');});}
 /** Generate animated preview in the preview canvas */
 async function doPreview(){const cv=document.getElementById('previewCanvas');cv.style.display='block';
   const ctx=cv.getContext('2d');
@@ -6658,7 +6669,7 @@ async function doPreview(){const cv=document.getElementById('previewCanvas');cv.
 function animate(t) {
   requestAnimationFrame(animate);
   const time = t * .001;
-  U.uTime.value = time; U2.uTime.value = time; U3.uTime.value = time; pU.uTime.value = time;light.intensity = LIGHT_BASE + Math.sin(time * LIGHT_FREQ) * LIGHT_FLICKER;animateSceneObjects(time);if (!drag && !camLocked) angles.theta += ORBIT_SPEED;
+  U.uTime.value = time; U2.uTime.value = time; U3.uTime.value = time; pU.uTime.value = time;light.intensity = LIGHT_BASE + Math.sin(time * LIGHT_FREQ) * LIGHT_FLICKER;animateSceneObjects(time);if (!drag && !camLocked && autoRotate) angles.theta += ORBIT_SPEED;
 // SDF uniforms
 if (renderMode === 'sdf') {
     sdfUniforms.uTime.value = time;
