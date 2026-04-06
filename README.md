@@ -108,6 +108,7 @@ Alternative render mode using signed distance fields:
 
 ### 💾 Persistence
 - Save/load custom presets with thumbnails (localStorage)
+- Preset import/export as JSON file for sharing and backup
 - URL sharing (delta-encoded, one-click)
 - JSON import/export for full state
 
@@ -117,14 +118,15 @@ Alternative render mode using signed distance fields:
 
 | Format | Description |
 |--------|-------------|
-| **PNG** | Single frame, up to 2048px |
+| **PNG** | Single frame, up to 2048px (transparent background supported) |
 | **Normal Map** | Auto-generated from displaced surface |
 | **PNG + Normal** | Both maps in one click |
 | **Spritesheet** | N frames tiled in grid |
 | **Strip** | N frames in a single row |
 | **Animated GIF** | Adaptive palette + Floyd-Steinberg dithering |
 | **PBR Pack** | Roughness, Metallic, AO, Height, Emissive |
-| **Godot .gdshader** | Native spatial shader with all parameters |
+| **Godot Material** | Spatial shader with displacement, cel-shading, iridescence, emission, overlays |
+| **Godot PostFX** | Screen-space canvas_item shader — bloom, chromatic aberration, vignette, tone mapping, grain, god rays, split-tone, scanlines, and more |
 | **Unity .shader** | ShaderLab + CGPROGRAM, inspector-ready |
 | **Three.js module** | ES module with `createCelShadeMaterial()` |
 
@@ -153,7 +155,13 @@ function animate() {
 
 ### Godot
 
-Click **🎮 Godot .gdshader** — exports a complete spatial shader with simplex noise, vertex displacement, cel-shading, rim light, and SSS. All parameters as uniforms.
+Two shaders are available:
+
+- **🎮 Godot Material** — complete spatial shader with simplex noise, 3-octave displacement, noise warp, twist, asymmetry, profile system, cel-shading, rim light, SSS, iridescence, emission patterns, and procedural overlays. All parameters as uniforms.
+
+- **🎮 Godot PostFX** — screen-space `canvas_item` shader replicating the editor's post-processing pipeline: bloom (single-pass approximation), chromatic aberration, vignette, contrast, saturation, tint, heat haze, ACES/Filmic tone mapping, film grain, god rays, split-tone grading, sharpen, lens distortion, letterbox, and scanlines.
+
+PostFX setup: add a `CanvasLayer` (layer 100+) with a full-rect `ColorRect` and assign the shader. For higher quality bloom, combine with Godot's built-in Glow in `WorldEnvironment`.
 
 ### Unity
 
@@ -184,6 +192,8 @@ Single HTML file, 3 script blocks:
 | `Scroll` | Zoom |
 | `Drag` | Orbit |
 | `Esc` | Close dialogs |
+| Viewport `↻` button | Toggle auto-rotate |
+| Viewport slider | Orbit speed |
 
 ---
 
