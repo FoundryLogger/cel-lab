@@ -7430,14 +7430,14 @@ void fragment() {
     vec2 res = 1.0 / px;
 
     // ── Lens distortion (barrel) ──
+    bool oob = false;
     if (lens_dist > 0.001) {
         vec2 dc = uv - 0.5;
         float r2 = dot(dc, dc);
         dc *= 1.0 + lens_dist * r2 * 4.0;
         uv = dc + 0.5;
-        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-            COLOR = vec4(0.0, 0.0, 0.0, 1.0); return;
-        }
+        oob = uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0;
+        uv = clamp(uv, vec2(0.0), vec2(1.0));
     }
 
     // ── Heat haze ──
@@ -7549,7 +7549,7 @@ void fragment() {
         if (uv.y < letterbox || uv.y > 1.0 - letterbox) col = vec3(0.0);
     }
 
-    COLOR = vec4(max(col, vec3(0.0)), sc.a);
+    COLOR = oob ? vec4(0.0, 0.0, 0.0, 1.0) : vec4(max(col, vec3(0.0)), sc.a);
 }
 `;
 downloadText(code,exportPrefix()+'-postfx.gdshader');}
