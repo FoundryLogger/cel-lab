@@ -7147,6 +7147,13 @@ uniform float up_bias : hint_range(-2.0, 2.0) = ${p.upBias.toFixed(2)};
 uniform float stretch_y : hint_range(0.2, 4.0) = ${p.stretchY.toFixed(2)};
 uniform float taper : hint_range(-1.0, 2.0) = ${p.taper.toFixed(2)};
 uniform float noise_sharp : hint_range(0.1, 5.0) = ${p.noisePow.toFixed(2)};
+uniform float noise_warp : hint_range(-1.0, 1.0) = ${p.noiseWarp.toFixed(2)};
+uniform float asym_x : hint_range(-2.0, 2.0) = ${p.asymX.toFixed(2)};
+uniform float asym_z : hint_range(-2.0, 2.0) = ${p.asymZ.toFixed(2)};
+uniform float twist : hint_range(-5.0, 5.0) = ${p.twist.toFixed(2)};
+uniform float profile_bot : hint_range(0.0, 2.0) = ${p.profileBot.toFixed(2)};
+uniform float profile_mid : hint_range(0.0, 2.0) = ${p.profileMid.toFixed(2)};
+uniform float profile_top : hint_range(0.0, 2.0) = ${p.profileTop.toFixed(2)};
 uniform float shading_soft : hint_range(0.0, 1.0) = ${p.shadingSoft.toFixed(2)};
 uniform float thresh1 : hint_range(0.0, 1.0) = ${p.thresh1.toFixed(2)};
 uniform float thresh2 : hint_range(0.0, 1.0) = ${p.thresh2.toFixed(2)};
@@ -7172,6 +7179,7 @@ uniform vec3 sss_color : source_color = vec3(${c('sssColor').join(', ')});
 
 varying float v_dist;
 varying vec3 v_pos;
+varying float v_obj_y;
 varying vec3 v_world_normal;
 
 float band_edge(float threshold, float tv) {
@@ -7182,15 +7190,35 @@ float band_edge(float threshold, float tv) {
 void vertex() {
     vec3 n = normalize(NORMAL);
     vec3 flow = n * flow_scale + vec3(0.0, -TIME * flow_speed, 0.0);
+    if (abs(twist) > 0.001) {
+        float a = VERTEX.y * twist;
+        float c = cos(a); float s = sin(a);
+        flow = vec3(flow.x * c - flow.z * s, flow.y, flow.x * s + flow.z * c);
+    }
+    if (abs(noise_warp) > 0.001) {
+        flow += snoise(flow * 1.5 + vec3(10.0, 0.0, 5.0)) * noise_warp;
+    }
     float d = snoise(flow * disp1_freq) * disp1_amp + snoise(flow * disp2_freq + vec3(4.0, 0.0, 2.0)) * disp2_amp;
     float sd = sign(d);
     d = sd * pow(abs(d), noise_sharp);
-    d *= (1.0 + n.y * up_bias);
+    d *= (1.0 + n.y * up_bias + n.x * asym_x + n.z * asym_z);
     d *= 1.0 + (n.y * 0.5 + 0.5) * taper;
     vec3 np = VERTEX + n * d;
     np.y *= stretch_y;
+    float h = clamp(np.y / max(stretch_y, 0.01), -1.0, 1.0);
+    float pw;
+    if (h < 0.0) {
+        float t = smoothstep(0.0, 1.0, h + 1.0);
+        pw = mix(profile_bot, profile_mid, t);
+    } else {
+        float t = smoothstep(0.0, 1.0, h);
+        pw = mix(profile_mid, profile_top, t);
+    }
+    np.x *= pw;
+    np.z *= pw;
     v_dist = length(np);
     v_pos = np;
+    v_obj_y = VERTEX.y;
     v_world_normal = (MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz;
     VERTEX = np;
 }
@@ -7199,6 +7227,11 @@ void fragment() {
     float t = clamp((v_dist - dist_min) / dist_range, 0.0, 1.0);
     vec3 np = normalize(v_pos);
     vec3 flow = np + vec3(0.0, -TIME * flow_speed * 0.75, 0.0);
+    if (abs(twist) > 0.001) {
+        float a = v_obj_y * twist;
+        float c = cos(a); float s = sin(a);
+        flow = vec3(flow.x * c - flow.z * s, flow.y, flow.x * s + flow.z * c);
+    }
     float edge_n = snoise(flow * edge_scale) * edge_amount;
     float tv = t + edge_n;
 
