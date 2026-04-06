@@ -7176,6 +7176,15 @@ uniform vec3 col4 : source_color = vec3(${c('col4').join(', ')});
 uniform vec3 col5 : source_color = vec3(${c('col5').join(', ')});
 uniform vec3 rim_color : source_color = vec3(${c('rimColor').join(', ')});
 uniform vec3 sss_color : source_color = vec3(${c('sssColor').join(', ')});
+uniform float iri_intensity : hint_range(0.0, 2.0) = ${p.iriIntensity.toFixed(2)};
+uniform float iri_shift : hint_range(0.0, 5.0) = ${p.iriShift.toFixed(2)};
+uniform float emiss_intensity : hint_range(0.0, 3.0) = ${p.emissIntensity.toFixed(2)};
+uniform float emiss_scale : hint_range(0.1, 20.0) = ${p.emissScale.toFixed(2)};
+uniform float emiss_thresh : hint_range(0.0, 1.0) = ${p.emissThresh.toFixed(2)};
+uniform vec3 emiss_color : source_color = vec3(${c('emissColor').join(', ')});
+uniform int overlay_type = ${p.overlayType};
+uniform float overlay_scale : hint_range(1.0, 100.0) = ${p.overlayScale.toFixed(2)};
+uniform float overlay_mix : hint_range(0.0, 1.0) = ${p.overlayMix.toFixed(2)};
 
 varying float v_dist;
 varying vec3 v_pos;
@@ -7255,6 +7264,37 @@ void fragment() {
         float thickness = 1.0 - t;
         float sss = pow(1.0 - NdotV, sss_power) * thickness;
         col += sss_color * sss * sss_intensity;
+    }
+
+    // Iridescence
+    if (iri_intensity > 0.001) {
+        float fresnel = 1.0 - NdotV;
+        float hue = fresnel * iri_shift * 6.2832;
+        vec3 iri = vec3(0.5 + 0.5 * cos(hue), 0.5 + 0.5 * cos(hue - 2.094), 0.5 + 0.5 * cos(hue + 2.094));
+        col = mix(col, col * iri * 2.0, fresnel * iri_intensity);
+    }
+
+    // Emission pattern
+    if (emiss_intensity > 0.001) {
+        float en = snoise(v_pos * emiss_scale + vec3(TIME * 0.3));
+        float emask = smoothstep(emiss_thresh - 0.05, emiss_thresh + 0.05, en);
+        col += emiss_color * emask * emiss_intensity;
+    }
+
+    // Procedural overlay
+    if (overlay_type > 0 && overlay_mix > 0.001) {
+        vec2 sc = v_pos.xy * overlay_scale;
+        float pat = 0.0;
+        if (overlay_type == 1) {
+            pat = step(0.6, sin(sc.x * 6.2832) * sin(sc.y * 6.2832));
+        } else if (overlay_type == 2) {
+            pat = step(0.4, sin((sc.x + sc.y) * 6.2832) * 0.5 + 0.5);
+        } else if (overlay_type == 3) {
+            float h1 = step(0.4, sin((sc.x + sc.y) * 6.2832) * 0.5 + 0.5);
+            float h2 = step(0.4, sin((sc.x - sc.y) * 6.2832) * 0.5 + 0.5);
+            pat = max(h1, h2);
+        }
+        col = mix(col, col * (1.0 - pat * 0.6 * (1.0 - t + 0.2)), overlay_mix);
     }
 
     ALBEDO = col;
