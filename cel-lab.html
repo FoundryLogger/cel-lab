@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cel-Lab</title>
 <style>
-:root{--bg:#0d0d14;--panel:#13131e;--card:#1a1a2a;--border:#2a2a40;--accent:#ff8844;--accent2:#44aaff;--accent3:#44ff88;--text:#ccc;--dim:#778;--input-bg:#1e1e30;--slider-track:#2e2e44}
+:root{--bg:#0d0d14;--panel:#13131e;--card:#1a1a2a;--border:#2a2a40;--accent:#ff8844;--accent2:#44aaff;--accent3:#44ff88;--text:#ddd;--dim:#99a;--input-bg:#1e1e30;--slider-track:#2e2e44}
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:var(--bg);overflow:hidden;display:flex;font-family:'SF Mono','Cascadia Code','Courier New',monospace;color:var(--text);width:100vw;height:100vh}
 #panel{width:380px;height:100vh;display:flex;flex-direction:column;background:var(--panel);border-left:1px solid var(--border);flex-shrink:0}
@@ -179,6 +179,7 @@ body{background:var(--bg);overflow:hidden;display:flex;font-family:'SF Mono','Ca
 .cam-row{display:flex;gap:3px;margin-bottom:4px;flex-wrap:wrap}
 .cam-btn{font-family:inherit;font-size:10px;padding:5px 8px;background:var(--input-bg);color:var(--dim);border:1px solid var(--border);border-radius:3px;cursor:pointer;transition:all .15s}
 .cam-btn:hover,.cam-btn.active{color:var(--accent);border-color:var(--accent)}
+.cam-overlay{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:3px;padding:4px 8px;background:rgba(13,13,20,.85);border:1px solid var(--border);border-radius:6px;z-index:10;backdrop-filter:blur(4px)}
 #previewCanvas{width:100%;max-width:200px;border:1px solid var(--border);border-radius:4px;display:none;margin:4px auto;image-rendering:pixelated}
 
 /* ═══ V11: SDF Mode ═══ */
@@ -494,7 +495,7 @@ body{background:var(--bg);overflow:hidden;display:flex;font-family:'SF Mono','Ca
     <div class="tab-page active" id="page0">
       <div class="section"><div class="section-head" onclick="togSec(this)"><span class="arrow">▼</span><span class="title green">Presets</span></div><div class="section-body"><div class="user-presets-bar">
             <span class="upr-title">My Presets</span>
-            <button class="upr-save-btn" onclick="uprOpenDialog()">💾 Save</button><button class="curve-ctrl-btn" onclick="uprClearAll()" style="font-size:9px" title="Delete all saved presets">🗑</button>
+            <button class="upr-save-btn" onclick="uprOpenDialog()">💾 Save</button><button class="curve-ctrl-btn" onclick="uprExportAll()" style="font-size:9px" title="Export all presets to JSON">📤</button><button class="curve-ctrl-btn" onclick="uprImportAll()" style="font-size:9px" title="Import presets from JSON">📥</button><button class="curve-ctrl-btn" onclick="uprClearAll()" style="font-size:9px" title="Delete all saved presets">🗑</button>
           </div>
           <div class="upr-grid" id="uprGrid"></div>
           <div style="font-size:9px;color:var(--dim);margin:4px 0 8px;border-bottom:1px solid var(--border);padding-bottom:6px" id="uprCount">No saved presets</div>
@@ -573,14 +574,6 @@ body{background:var(--bg);overflow:hidden;display:flex;font-family:'SF Mono','Ca
         <div class="param"><label>Grid cols</label><select id="expCols"><option value="auto" selected>Auto</option><option value="2">2</option><option value="4">4</option><option value="8">8</option></select></div>
       </div></div>
       <div style="padding:6px 10px">
-        <div style="font-size:10px;color:var(--dim);margin-bottom:3px">Camera</div>
-        <div class="cam-row">
-          <button class="cam-btn" onclick="setCam(0,Math.PI/2,'Front',this)">Front</button>
-          <button class="cam-btn" onclick="setCam(Math.PI/2,Math.PI/2,'Side',this)">Side</button>
-          <button class="cam-btn" onclick="setCam(Math.PI/4,1.15,'3/4',this)">3/4</button>
-          <button class="cam-btn" onclick="setCam(0,0.35,'Top',this)">Top</button>
-          <button class="cam-btn" id="camLockBtn" onclick="toggleCamLock()">🔓 Free</button>
-        </div>
         <canvas id="previewCanvas" width="128" height="128"></canvas>
         <div style="display:flex;gap:4px">
           <button class="btn btn-green" style="flex:2" onclick="doCapture()" id="captureBtn">EXPORT ASSET</button>
@@ -5706,6 +5699,7 @@ const scene=new THREE.Scene();scene.background=new THREE.Color(SCENE_BG);
 const camera=new THREE.PerspectiveCamera(45,1,0.1,100);camera.position.set(0,0.5,5);camera.lookAt(0,0,0);
 const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 container.appendChild(renderer.domElement);
+const camOverlay=document.createElement('div');camOverlay.className='cam-overlay';camOverlay.innerHTML='<button class="cam-btn" onclick="setCam(0,Math.PI/2,\'Front\',this)">Front</button><button class="cam-btn" onclick="setCam(Math.PI/2,Math.PI/2,\'Side\',this)">Side</button><button class="cam-btn" onclick="setCam(Math.PI/4,1.15,\'3/4\',this)">3/4</button><button class="cam-btn" onclick="setCam(0,0.35,\'Top\',this)">Top</button><button class="cam-btn" id="camLockBtn" onclick="toggleCamLock()">\u{1F513} Free</button>';container.appendChild(camOverlay);
 let rtScene,rtBright,rtBlurH,rtBlurV,rtTrailA,rtTrailB;let trailFlip=false;
 /** Create or recreate render targets at given resolution */
 /** Create or recreate render targets at given resolution */
@@ -6992,12 +6986,14 @@ function captureViewportFrame(time, res, transparent) {
   const savedBg = scene.background;
   const savedPixelRatio = renderer.getPixelRatio();
 
-  // Resize main renderer to export resolution
-  renderer.setPixelRatio(1);
-  renderer.setSize(res, res);
+  // Use offscreenRenderer for transparent (has alpha:true), main renderer otherwise
+  const useOffscreen = !!transparent;
+  const ren = useOffscreen ? getOffscreenRenderer(res, transparent) : renderer;
+
+  if (!useOffscreen) { ren.setPixelRatio(1); ren.setSize(res, res); }
   camera.aspect = 1;
   camera.updateProjectionMatrix();
-  createRTs(res, res);
+  if (!useOffscreen) createRTs(res, res);
 
   if (transparent) scene.background = null;
   else scene.background = new THREE.Color(0);
@@ -7030,7 +7026,7 @@ function captureViewportFrame(time, res, transparent) {
     sdfUniforms.uInvView.value.copy(camera.matrixWorld);
   }
 
-  // Render through the EXACT same pipeline as animate()
+  // Render — transparent mode bypasses composite to preserve alpha channel
   const effectiveBloom = P.bloomIntensity;
   const needsComposite = effectiveBloom > 0.01 || P.chromaAb > 0.001 || P.vignette > 0.01 ||
     Math.abs(P.contrast - 1) > 0.01 || Math.abs(P.saturation - 1) > 0.01 ||
@@ -7041,7 +7037,7 @@ function captureViewportFrame(time, res, transparent) {
 
   compositeMat.uniforms.uIntensity.value = effectiveBloom;
 
-  if (needsComposite) {
+  if (needsComposite && !useOffscreen) {
     renderer.setRenderTarget(rtScene);
     if (renderMode === 'sdf') renderer.render(sdfScene, ppCamera);
     else renderer.render(scene, camera);
@@ -7065,21 +7061,23 @@ function captureViewportFrame(time, res, transparent) {
     compositeMat.uniforms.tBloom.value = rtBlurV.texture;
     renderer.setRenderTarget(null); renderer.render(ppScene, ppCamera);
   } else {
-    renderer.setRenderTarget(null);
-    if (renderMode === 'sdf') renderer.render(sdfScene, ppCamera);
-    else renderer.render(scene, camera);
+    ren.setRenderTarget(null);
+    if (renderMode === 'sdf') ren.render(sdfScene, ppCamera);
+    else ren.render(scene, camera);
   }
 
   // Capture the canvas
-  const data = renderer.domElement.toDataURL('image/png');
+  const data = ren.domElement.toDataURL('image/png');
 
   // Restore everything
   scene.background = savedBg || new THREE.Color(SCENE_BG);
-  renderer.setPixelRatio(savedPixelRatio);
-  renderer.setSize(savedW / savedPixelRatio, savedH / savedPixelRatio);
+  if (!useOffscreen) {
+    renderer.setPixelRatio(savedPixelRatio);
+    renderer.setSize(savedW / savedPixelRatio, savedH / savedPixelRatio);
+    createRTs(savedW, savedH);
+  }
   camera.aspect = savedW / savedH;
   camera.updateProjectionMatrix();
-  createRTs(savedW, savedH);
 
   return data;
 }
@@ -8629,6 +8627,33 @@ function uprClearAll(){
   localStorage.removeItem(UPR_STORAGE_KEY);
   uprRenderGrid();
 }
+/** Export all user presets as JSON file */
+function uprExportAll(){
+  const presets=uprGetAll();
+  if(presets.length===0){alert('No presets to export.');return;}
+  downloadText(JSON.stringify(presets,null,2),'cel-lab-presets.json');
+}
+
+/** Import user presets from a JSON file */
+function uprImportAll(){
+  const input=document.createElement('input');input.type='file';input.accept='.json';
+  input.onchange=()=>{
+    const file=input.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=()=>{
+      try{
+        const imported=JSON.parse(reader.result);
+        if(!Array.isArray(imported)){alert('Invalid format: expected JSON array of presets.');return;}
+        const existing=uprGetAll();
+        uprSaveAll(existing.concat(imported));
+        uprRenderGrid();
+      }catch(e){alert('Failed to parse preset file: '+e.message);}
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
 // Init: render saved presets on load
 uprRenderGrid();
 
