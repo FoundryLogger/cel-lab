@@ -588,7 +588,8 @@ body{background:var(--bg);overflow:hidden;display:flex;font-family:'SF Mono','Ca
           <button class="btn btn-blue" style="flex:1" onclick="doPreview()">PREVIEW</button>
         </div>
         <div style="display:flex;gap:4px;margin-top:4px">
-          <button class="btn btn-ghost" style="flex:1" onclick="exportGodotShader()">🎮 Godot .gdshader</button>
+          <button class="btn btn-ghost" style="flex:1" onclick="exportGodotShader()">🎮 Godot Material</button>
+          <button class="btn btn-ghost" style="flex:1" onclick="exportGodotPostFX()">🎮 Godot PostFX</button>
           <button class="btn btn-ghost" style="flex:1" onclick="exportUnityShader()">🎮 Unity .shader</button>
         </div>
         <div style="display:flex;gap:4px;margin-top:4px">
@@ -7310,6 +7311,206 @@ void fragment() {
 }
 `;
 downloadText(code,'cel-shade-material.gdshader');}
+
+/** Export post-processing as Godot canvas_item shader */
+function exportGodotPostFX(){const p=P;const c=k=>{const v=hexToV(p[k]||'#000000');return v.map(x=>x.toFixed(3));};
+const code=`shader_type canvas_item;
+
+// ═══ CEL-LAB — Auto-generated Godot Post-Processing Shader ═══
+//
+// SETUP:
+//   1. Add a CanvasLayer node (layer = 100 or higher)
+//   2. Add a ColorRect child, set anchors to Full Rect
+//   3. Create a new ShaderMaterial and assign this shader
+//   4. For better bloom, also enable Glow in WorldEnvironment
+//
+// NOTE: Bloom here is a single-pass approximation. For multi-pass
+// bloom identical to the editor, use Godot's built-in Glow instead.
+
+uniform sampler2D screen_texture : hint_screen_texture, filter_linear;
+
+// Bloom (single-pass approximation)
+uniform float bloom_intensity : hint_range(0.0, 3.0) = ${p.bloomIntensity.toFixed(2)};
+uniform float bloom_threshold : hint_range(0.0, 1.0) = ${p.bloomThreshold.toFixed(2)};
+uniform float bloom_radius : hint_range(1.0, 8.0) = 3.0;
+// Chromatic aberration
+uniform float chroma_ab : hint_range(0.0, 0.05) = ${(p.chromaAb||0).toFixed(4)};
+// Vignette
+uniform float vignette_amt : hint_range(0.0, 2.0) = ${(p.vignette||0).toFixed(2)};
+// Color grading
+uniform float contrast : hint_range(0.5, 2.0) = ${(p.contrast||1).toFixed(2)};
+uniform float saturation : hint_range(0.0, 3.0) = ${(p.saturation||1).toFixed(2)};
+uniform vec3 tint_color : source_color = vec3(${c('tintColor').join(', ')});
+// Heat haze
+uniform float haze_intensity : hint_range(0.0, 1.0) = ${(p.hazeIntensity||0).toFixed(3)};
+uniform float haze_scale : hint_range(0.1, 10.0) = ${(p.hazeScale||3).toFixed(2)};
+uniform float haze_speed : hint_range(0.0, 5.0) = ${(p.hazeSpeed||1).toFixed(2)};
+// Tone mapping (0=none, 1=ACES, 2=Filmic)
+uniform int tone_map = ${p.ppToneMap||0};
+// Film grain
+uniform float grain_amt : hint_range(0.0, 1.0) = ${(p.ppGrain||0).toFixed(2)};
+uniform float grain_size : hint_range(0.5, 4.0) = ${(p.ppGrainSize||1).toFixed(2)};
+// God rays
+uniform float god_rays : hint_range(0.0, 2.0) = ${(p.ppGodRays||0).toFixed(2)};
+uniform float god_ray_decay : hint_range(0.8, 1.0) = ${(p.ppGodRayDecay||0.96).toFixed(3)};
+// Split tone
+uniform vec3 shadow_tint : source_color = vec3(${c('ppShadowTint').join(', ')});
+uniform vec3 high_tint : source_color = vec3(${c('ppHighTint').join(', ')});
+uniform float split_tone : hint_range(0.0, 1.0) = ${(p.ppSplitTone||0).toFixed(2)};
+// Sharpen
+uniform float sharpen_amt : hint_range(0.0, 2.0) = ${(p.ppSharpen||0).toFixed(2)};
+// Lens distortion
+uniform float lens_dist : hint_range(0.0, 0.5) = ${(p.ppLensDist||0).toFixed(3)};
+// Letterbox
+uniform float letterbox : hint_range(0.0, 0.2) = ${(p.ppLetterbox||0).toFixed(3)};
+// Scanlines
+uniform float scanlines : hint_range(0.0, 1.0) = ${(p.ppScanlines||0).toFixed(2)};
+
+// ── Tone mapping ──
+vec3 aces_film(vec3 x) {
+    float a = 2.51; float b = 0.03; float c = 2.43; float d = 0.59; float e = 0.14;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3(0.0), vec3(1.0));
+}
+vec3 filmic(vec3 x) {
+    vec3 X = max(vec3(0.0), x - 0.004);
+    return (X * (6.2 * X + 0.5)) / (X * (6.2 * X + 1.7) + 0.06);
+}
+
+// ── Grain noise ──
+float hash21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float grain_noise(vec2 uv, float t) {
+    return hash21(floor(uv) + vec2(floor(t * 60.0))) * 2.0 - 1.0;
+}
+
+void fragment() {
+    vec2 uv = SCREEN_UV;
+    vec2 px = SCREEN_PIXEL_SIZE;
+    vec2 res = 1.0 / px;
+
+    // ── Lens distortion (barrel) ──
+    if (lens_dist > 0.001) {
+        vec2 dc = uv - 0.5;
+        float r2 = dot(dc, dc);
+        dc *= 1.0 + lens_dist * r2 * 4.0;
+        uv = dc + 0.5;
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+            COLOR = vec4(0.0, 0.0, 0.0, 1.0); return;
+        }
+    }
+
+    // ── Heat haze ──
+    if (haze_intensity > 0.001) {
+        float n1 = sin(uv.x * haze_scale * 10.0 + TIME * haze_speed) * cos(uv.y * haze_scale * 8.0 + TIME * haze_speed * 0.7);
+        float n2 = cos(uv.x * haze_scale * 7.0 - TIME * haze_speed * 0.5) * sin(uv.y * haze_scale * 12.0 + TIME * haze_speed * 1.3);
+        float n3 = sin((uv.x + uv.y) * haze_scale * 6.0 + TIME * haze_speed * 0.9);
+        uv += vec2(n1 + n3 * 0.3, n2 + n3 * 0.3) * haze_intensity * 0.01;
+    }
+
+    // ── Chromatic aberration ──
+    vec2 ca_d = (uv - 0.5) * chroma_ab;
+    vec4 sc;
+    sc.r = texture(screen_texture, uv - ca_d).r;
+    sc.g = texture(screen_texture, uv).g;
+    sc.b = texture(screen_texture, uv + ca_d).b;
+    sc.a = texture(screen_texture, uv).a;
+
+    vec3 col = sc.rgb;
+
+    // ── Bloom (single-pass approximation) ──
+    if (bloom_intensity > 0.01) {
+        vec3 bloom = vec3(0.0);
+        float total_w = 0.0;
+        for (int x = -3; x <= 3; x++) {
+            for (int y = -3; y <= 3; y++) {
+                vec2 offset = vec2(float(x), float(y)) * bloom_radius * px;
+                vec3 s = texture(screen_texture, uv + offset).rgb;
+                float br = max(s.r, max(s.g, s.b));
+                if (br > bloom_threshold) {
+                    float w = 1.0 / (1.0 + float(x * x + y * y));
+                    bloom += s * w;
+                    total_w += w;
+                }
+            }
+        }
+        if (total_w > 0.0) bloom /= total_w;
+        col += bloom * bloom_intensity;
+    }
+
+    // ── Sharpen (unsharp mask) ──
+    if (sharpen_amt > 0.01) {
+        vec4 blur_s = (
+            texture(screen_texture, uv + vec2(-px.x, 0.0)) +
+            texture(screen_texture, uv + vec2(px.x, 0.0)) +
+            texture(screen_texture, uv + vec2(0.0, -px.y)) +
+            texture(screen_texture, uv + vec2(0.0, px.y))
+        ) * 0.25;
+        col += (sc.rgb - blur_s.rgb) * sharpen_amt * 2.0;
+    }
+
+    // ── God rays (radial scattering from center) ──
+    if (god_rays > 0.01) {
+        vec2 ray_uv = uv;
+        vec2 ray_dir = (vec2(0.5) - ray_uv) * 0.02;
+        float decay = 1.0; float total_weight = 0.0; vec3 rays = vec3(0.0);
+        for (int i = 0; i < 16; i++) {
+            ray_uv += ray_dir;
+            vec3 s = texture(screen_texture, ray_uv).rgb;
+            float bright = max(s.r, max(s.g, s.b));
+            rays += s * bright * decay;
+            total_weight += decay;
+            decay *= god_ray_decay;
+        }
+        rays /= total_weight;
+        col += rays * god_rays;
+    }
+
+    // ── Vignette ──
+    float vig = 1.0 - smoothstep(0.4, 1.4, length((uv - 0.5) * 2.0) * vignette_amt);
+    col *= mix(vec3(1.0), vec3(vig), step(0.001, vignette_amt));
+
+    // ── Contrast ──
+    col = mix(vec3(0.5), col, contrast);
+
+    // ── Saturation ──
+    float luma = dot(col, vec3(0.299, 0.587, 0.114));
+    col = mix(vec3(luma), col, saturation);
+
+    // ── Split tone (shadow / highlight tint) ──
+    if (split_tone > 0.01) {
+        float luma_st = dot(col, vec3(0.299, 0.587, 0.114));
+        vec3 shadow_blend = mix(col, col * shadow_tint * 2.0, smoothstep(0.5, 0.0, luma_st) * split_tone);
+        vec3 high_blend = mix(shadow_blend, shadow_blend * high_tint * 2.0, smoothstep(0.5, 1.0, luma_st) * split_tone * 0.5);
+        col = high_blend;
+    }
+
+    // ── Base tint ──
+    col *= tint_color;
+
+    // ── Tone mapping ──
+    if (tone_map == 1) col = aces_film(col);
+    else if (tone_map == 2) col = filmic(col);
+
+    // ── Film grain ──
+    if (grain_amt > 0.01) {
+        float g = grain_noise(uv * res / grain_size, TIME) * grain_amt;
+        col += vec3(g) * 0.15;
+    }
+
+    // ── Scanlines ──
+    if (scanlines > 0.01) {
+        float scan = sin(uv.y * res.y * 1.5) * 0.5 + 0.5;
+        col *= 1.0 - scanlines * 0.3 * (1.0 - scan);
+    }
+
+    // ── Letterbox ──
+    if (letterbox > 0.001) {
+        if (uv.y < letterbox || uv.y > 1.0 - letterbox) col = vec3(0.0);
+    }
+
+    COLOR = vec4(max(col, vec3(0.0)), sc.a);
+}
+`;
+downloadText(code,'cel-lab-postfx.gdshader');}
 
 /** Export current material as Unity ShaderLab file */
 function exportUnityShader(){const p=P;const c=k=>hexToV(p[k]).map(v=>v.toFixed(3));
