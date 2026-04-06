@@ -179,6 +179,7 @@ body{background:var(--bg);overflow:hidden;display:flex;font-family:'SF Mono','Ca
 .cam-row{display:flex;gap:3px;margin-bottom:4px;flex-wrap:wrap}
 .cam-btn{font-family:inherit;font-size:10px;padding:5px 8px;background:var(--input-bg);color:var(--dim);border:1px solid var(--border);border-radius:3px;cursor:pointer;transition:all .15s}
 .cam-btn:hover,.cam-btn.active{color:var(--accent);border-color:var(--accent)}
+.section-dice{font-size:10px;padding:1px 5px;margin-left:auto;background:rgba(255,136,68,.15);color:var(--accent);border:1px solid var(--accent);border-radius:3px;cursor:pointer;line-height:1;transition:all .15s}.section-dice:hover{background:var(--accent);color:#000}
 .cam-overlay{position:absolute;bottom:60px;left:50%;transform:translateX(-50%);display:flex;gap:3px;padding:4px 8px;background:rgba(13,13,20,.85);border:1px solid var(--border);border-radius:6px;z-index:55;backdrop-filter:blur(4px)}
 #previewCanvas{width:100%;max-width:200px;border:1px solid var(--border);border-radius:4px;display:none;margin:4px auto;image-rendering:pixelated}
 
@@ -4341,6 +4342,18 @@ const LIGHT_FLICKER       = 0.4;
 const LIGHT_FREQ          = 8;
 let ORBIT_SPEED           = 0.003;
 let autoRotate            = true;
+let activePresetName      = '';
+function exportPrefix(){return activePresetName?activePresetName.replace(/[^a-zA-Z0-9_-]/g,'_'):'cel';}
+const SECTION_PARAMS={
+  'disp-params':['disp1Amp','disp1Freq','disp2Amp','disp2Freq','disp3Amp','disp3Freq','upBias'],
+  'shape-params':['stretchY','taper','noisePow','noiseWarp','asymX','asymZ','profileBot','profileMid','profileTop','twist','morphBlend'],
+  'flow-params':['flowSpeed','flowNoiseScale'],
+  'band-params':['thresh1','thresh2','thresh3','thresh4','distMin','distRange','shadingSoft'],
+  'edge-params':['edgeScale','edgeAmount','edgeDetail','overlayScale','overlayMix'],
+  'emit-params':['glowBase','glowCore','rimIntensity','rimPower','iriIntensity','iriShift','emissIntensity','emissScale','emissThresh','sssIntensity','sssPower'],
+  'post-params':['bloomIntensity','bloomThreshold','chromaAb','vignette','contrast','saturation','ppGrain','ppSharpen','ppLensDist','ppScanlines'],
+  'part-params':['partCount','partSize','partSpeed','partSpread','partHeight','partTurb','partTurbScale','partGravity','partSizeEnd','partTrail']
+};
 const ORBIT_SENSITIVITY   = 0.005;
 const SCENE_BG            = 0x050508;
 const UPR_STORAGE_KEY     = 'cel-editor-user-presets';
@@ -5114,7 +5127,7 @@ pU.uPartSize.value=P.partSize+h*0.08;}
 
 // Presets
 const prC=document.getElementById('presets');
-Object.keys(PRESETS).forEach(n=>{const b=document.createElement('button');b.className='preset-btn';b.textContent=n;b.addEventListener('click',()=>loadPreset(PRESETS[n]));prC.appendChild(b);});
+Object.keys(PRESETS).forEach(n=>{const b=document.createElement('button');b.className='preset-btn';b.textContent=n;b.addEventListener('click',()=>{activePresetName=n;loadPreset(PRESETS[n]);});prC.appendChild(b);});
 // 🎲 Random generator
 const diceBtn = document.createElement('button');
 diceBtn.className = 'preset-btn';
@@ -5123,6 +5136,33 @@ diceBtn.textContent = '🎲';
 diceBtn.title = 'Random preset';
 diceBtn.addEventListener('click', randomPreset);
 prC.appendChild(diceBtn);
+
+/** Randomize a single section's parameters */
+function randomizeSection(sectionId){
+  const keys=SECTION_PARAMS[sectionId];if(!keys)return;
+  pushUndo();
+  keys.forEach(k=>{
+    const el=inputs[k];if(!el)return;
+    if(el.type==='range'){
+      const mn=parseFloat(el.min),mx=parseFloat(el.max),st=parseFloat(el.step)||0.01;
+      const v=mn+Math.random()*(mx-mn);
+      P[k]=Math.round(v/st)*st;
+    }else if(el.type==='color'){
+      const h=Math.random()*360,s=40+Math.random()*40,l=30+Math.random()*40;
+      P[k]='#'+[0,120,240].map(o=>{const c=Math.round((Math.cos((h+o)*Math.PI/180)*0.5+0.5)*s/100*255*(l/50));return Math.max(0,Math.min(255,c)).toString(16).padStart(2,'0');}).join('');
+    }
+  });
+  syncUI();updateAll();
+}
+// Inject dice buttons into section headers
+Object.keys(SECTION_PARAMS).forEach(id=>{
+  const body=document.getElementById(id);if(!body)return;
+  const head=body.previousElementSibling;if(!head||!head.classList.contains('section-head'))return;
+  const btn=document.createElement('button');btn.className='section-dice';btn.textContent='\u{1F3B2}';btn.title='Randomize this section';
+  btn.addEventListener('click',e=>{e.stopPropagation();randomizeSection(id);});
+  head.appendChild(btn);
+});
+
 /** Random float in range [min, max] */
 function rr(mn,mx){return mn+Math.random()*(mx-mn);}function rp(a){return a[Math.floor(Math.random()*a.length)];}
 /** Generate a random hex color */
@@ -5424,7 +5464,9 @@ const ARCHETYPES={
 
 // ── Pick archetype ──
 const arcKeys=Object.keys(ARCHETYPES);
-const arc=ARCHETYPES[arcKeys[Math.floor(Math.random()*arcKeys.length)]];
+const arcName=arcKeys[Math.floor(Math.random()*arcKeys.length)];
+const arc=ARCHETYPES[arcName];
+activePresetName=arcName;
 
 // ── Generate palette ──
 const baseH=arc.hue[0]+Math.random()*(arc.hue[1]-arc.hue[0]);
@@ -7106,27 +7148,27 @@ async function doCapture(){const format=document.getElementById('expFormat').val
   const bt=U.uTime.value;
 if(format==='png'){prog.textContent='Rendering...';await new Promise(r=>setTimeout(r,50));
   const d=captureViewportFrame(bt,res,tp);
-  const c=await dataURLToCanvas(d);downloadCanvas(c,'cel-'+res+'px.png');prog.textContent='Done!';}
+  const c=await dataURLToCanvas(d);downloadCanvas(c,exportPrefix()+'-'+res+'px.png');prog.textContent='Done!';}
 else if(format==='normal'){prog.textContent='Rendering normal map...';await new Promise(r=>setTimeout(r,50));
   const d=renderNormalFrame(bt,res);
-  const c=await dataURLToCanvas(d);downloadCanvas(c,'cel-normal-'+res+'px.png');prog.textContent='Done!';}
+  const c=await dataURLToCanvas(d);downloadCanvas(c,exportPrefix()+'-normal-'+res+'px.png');prog.textContent='Done!';}
 else if(format==='png+normal'){prog.textContent='Rendering color...';await new Promise(r=>setTimeout(r,50));
   const d1=captureViewportFrame(bt,res,tp);
-  const c1=await dataURLToCanvas(d1);downloadCanvas(c1,'cel-color-'+res+'px.png');prog.textContent='Rendering normal...';await new Promise(r=>setTimeout(r,100));
+  const c1=await dataURLToCanvas(d1);downloadCanvas(c1,exportPrefix()+'-color-'+res+'px.png');prog.textContent='Rendering normal...';await new Promise(r=>setTimeout(r,100));
   const d2=renderNormalFrame(bt,res);
-  const c2=await dataURLToCanvas(d2);downloadCanvas(c2,'cel-normal-'+res+'px.png');prog.textContent='Done! 2 files';}
+  const c2=await dataURLToCanvas(d2);downloadCanvas(c2,exportPrefix()+'-normal-'+res+'px.png');prog.textContent='Done! 2 files';}
 else if(format==='sheet'||format==='strip'){const frames=[];
   const cols=format==='strip'?nf:(cv==='auto'?Math.ceil(Math.sqrt(nf)):parseInt(cv));
   const rows=Math.ceil(nf/cols);
   for (let i=0;i<nf;i++){prog.textContent='Frame '+(i+1)+'/'+nf;await new Promise(r=>setTimeout(r,20));frames.push(await dataURLToCanvas(captureViewportFrame(bt+(i/nf)*dur,res,tp)));}prog.textContent='Building...';await new Promise(r=>setTimeout(r,50));
   const sc=document.createElement('canvas');sc.width=cols*res;sc.height=rows*res;
   const ctx=sc.getContext('2d');
-  if (!tp){ctx.fillStyle='#000';ctx.fillRect(0,0,sc.width,sc.height);}for(let i=0;i<frames.length;i++){ctx.drawImage(frames[i],(i%cols)*res,Math.floor(i/cols)*res,res,res);}downloadCanvas(sc,'cel-'+(format==='strip'?'strip':'sheet')+'-'+nf+'f-'+res+'px.png');prog.textContent='Done! '+cols+'×'+rows+' @ '+res+'px';}
+  if (!tp){ctx.fillStyle='#000';ctx.fillRect(0,0,sc.width,sc.height);}for(let i=0;i<frames.length;i++){ctx.drawImage(frames[i],(i%cols)*res,Math.floor(i/cols)*res,res,res);}downloadCanvas(sc,exportPrefix()+'-'+(format==='strip'?'strip':'sheet')+'-'+nf+'f-'+res+'px.png');prog.textContent='Done! '+cols+'×'+rows+' @ '+res+'px';}
 else if(format==='gif'){const gifRes=Math.min(res,512);
   const frames=[];
   for (let i=0;i<nf;i++){prog.textContent='Frame '+(i+1)+'/'+nf;await new Promise(r=>setTimeout(r,20));frames.push(await dataURLToCanvas(captureViewportFrame(bt+(i/nf)*dur,gifRes,false)));}prog.textContent='Encoding GIF...';await new Promise(r=>setTimeout(r,50));
   const delay=Math.round(dur/nf*100);
-  const blob=encodeGIF(frames,gifRes,gifRes,delay);downloadBlob(blob,'cel-'+gifRes+'px-'+nf+'f.gif');prog.textContent='Done! '+nf+' frames @ '+gifRes+'px';}
+  const blob=encodeGIF(frames,gifRes,gifRes,delay);downloadBlob(blob,exportPrefix()+'-'+gifRes+'px-'+nf+'f.gif');prog.textContent='Done! '+nf+' frames @ '+gifRes+'px';}
 scene.background=new THREE.Color(SCENE_BG);btn.disabled=false;btn.textContent='EXPORT ASSET';setTimeout(()=>{prog.style.display='none';},3000);}
 
 // ════════════════════════════════════════════════════════════
@@ -7310,7 +7352,7 @@ void fragment() {
     ALBEDO = col;
 }
 `;
-downloadText(code,'cel-shade-material.gdshader');}
+downloadText(code,exportPrefix()+'-material.gdshader');}
 
 /** Export post-processing as Godot canvas_item shader */
 function exportGodotPostFX(){const p=P;const c=k=>{const v=hexToV(p[k]||'#000000');return v.map(x=>x.toFixed(3));};
@@ -7510,7 +7552,7 @@ void fragment() {
     COLOR = vec4(max(col, vec3(0.0)), sc.a);
 }
 `;
-downloadText(code,'cel-lab-postfx.gdshader');}
+downloadText(code,exportPrefix()+'-postfx.gdshader');}
 
 /** Export current material as Unity ShaderLab file */
 function exportUnityShader(){const p=P;const c=k=>hexToV(p[k]).map(v=>v.toFixed(3));
@@ -7607,7 +7649,7 @@ const code=`Shader "Custom/CelShadeEditorPRO"
     FallBack "Diffuse"
 }
 `;
-downloadText(code,'CelShadeEditorPRO.shader');}
+downloadText(code,exportPrefix()+'.shader');}
 
 
 
@@ -8132,7 +8174,7 @@ async function exportPBR(type){
     await new Promise(r=>setTimeout(r,50));
     const data=renderPBRMap(maps[i],res);
     const c=await dataURLToCanvas(data);
-    downloadCanvas(c,'cel-'+maps[i]+'-'+res+'px.png');
+    downloadCanvas(c,exportPrefix()+'-'+maps[i]+'-'+res+'px.png');
     await new Promise(r=>setTimeout(r,200));
   }
   prog.textContent='Done! '+maps.length+' PBR map'+(maps.length>1?'s':'')+' exported';
@@ -8766,6 +8808,7 @@ function uprLoad(idx){
   const presets=uprGetAll();
   if(idx<0||idx>=presets.length)return;
   const pr=presets[idx];
+  activePresetName=pr.name||'';
   pushUndo();
   // Apply state
   const d=pr.state;
@@ -9202,7 +9245,7 @@ export function createCelShadeGeometry(type = 'sphere') {
   }
 }
 `;
-  downloadText(code, 'cel-shade-material.js');
+  downloadText(code, exportPrefix()+'-material.js');
 }
 
 
