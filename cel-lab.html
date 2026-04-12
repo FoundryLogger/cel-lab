@@ -8934,12 +8934,20 @@ function exportThreeJS(){
 // Drop this file into your Three.js project
 // ═══════════════════════════════════════════════════════
 // Usage:
-//   import { createCelShadeMaterial } from './cel-shade-material.js';
+//   import { createCelShadeMaterial, createCelShadeGeometry,
+//            createParticleSystem, updateParticles } from './cel-shade-material.js';
 //   const material = createCelShadeMaterial();
-//   const mesh = new THREE.Mesh(geometry, material);
+//   const mesh = new THREE.Mesh(createCelShadeGeometry(), material);
 //   scene.add(mesh);
+//   // Particles (if exported):
+//   if (typeof createParticleSystem === 'function') {
+//     const { mesh: particles, uniforms: partUniforms } = createParticleSystem(material.uniforms);
+//     scene.add(particles);
+//   }
 //   // In your animate loop:
-//   material.uniforms.uTime.value = clock.getElapsedTime();
+//   const t = clock.getElapsedTime();
+//   material.uniforms.uTime.value = t;
+//   if (partUniforms) updateParticles(partUniforms, t);
 // ═══════════════════════════════════════════════════════
 
 import * as THREE from 'three';
@@ -9244,7 +9252,194 @@ export function createCelShadeGeometry(type = 'sphere') {
     default: return new THREE.SphereGeometry(1, 96, 96);
   }
 }
-`;
+${p.showParticles&&p.partCount>0?`
+// ═══════════════════════════════════════════════════════
+// Particle System
+// ═══════════════════════════════════════════════════════
+
+// ── Particle Vertex Shader ──
+const particleVS = \`
+attribute float aIndex; attribute vec2 aCorner;
+varying float vLife; varying vec2 vUv; varying float vSF; varying vec3 vVel;
+uniform float uTime, uPartSpeed, uPartSpread, uPartLife, uPartHeight, uPartSize;
+uniform float uPartCurl, uPartChaos, uPartStretch, uPartTurb, uPartTurbScale;
+uniform float uPartGravity, uPartSizeEnd, uPartTrail;
+uniform int uPartEmitShape; uniform float uPartEmitRadius;
+vec3 mod289p(vec3 x){return x-floor(x/289.)*289.;}vec4 mod289pv(vec4 x){return x-floor(x/289.)*289.;}
+vec4 permp(vec4 x){return mod289pv(((x*34.)+1.)*x);}
+float snoise3(vec3 v){const vec2 C=vec2(1./6.,1./3.);vec3 i=floor(v+dot(v,C.yyy));vec3 x0=v-i+dot(i,C.xxx);vec3 g=step(x0.yzx,x0.xyz);vec3 l=1.-g;vec3 i1=min(g,l.zxy);vec3 i2=max(g,l.zxy);vec3 x1=x0-i1+C.x;vec3 x2=x0-i2+C.y;vec3 x3=x0-.5;i=mod289p(i);vec4 p=permp(permp(permp(i.z+vec4(0.,i1.z,i2.z,1.))+i.y+vec4(0.,i1.y,i2.y,1.))+i.x+vec4(0.,i1.x,i2.x,1.));vec4 j=p-49.*floor(p/49.);vec4 x_=floor(j/7.);vec4 y_=floor(j-7.*x_);vec4 x=x_/7.-.5;vec4 y=y_/7.-.5;vec4 h=1.-abs(x)-abs(y);vec4 b0=vec4(x.xy,y.xy);vec4 b1=vec4(x.zw,y.zw);vec4 s0=floor(b0)*2.+1.;vec4 s1=floor(b1)*2.+1.;vec4 sh=-step(h,vec4(0.));vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;vec3 p0=vec3(a0.xy,h.x);vec3 p1=vec3(a0.zw,h.y);vec3 p2=vec3(a1.xy,h.z);vec3 p3=vec3(a1.zw,h.w);vec4 nm=1.79284-.85373*vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3));p0*=nm.x;p1*=nm.y;p2*=nm.z;p3*=nm.w;vec4 m=max(.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.);m=m*m;return 42.*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));}
+float hash(float n){return fract(sin(n)*43758.5453);}
+void main(){
+  float idx=aIndex;float ch=uPartChaos;
+  float rL=hash(idx*127.1+311.7),rA=hash(idx*269.5+183.3),rR=hash(idx*419.2+72.1);
+  float rS=hash(idx*631.4+551.0),rSp=hash(idx*157.3+923.1);
+  float rD=hash(idx*743.8+247.6),rW=hash(idx*359.1+689.4);
+  float sm=mix(1.,.3+rSp*1.7,ch);
+  float per=uPartLife*mix(1.,.4+rL*1.2,ch);
+  float t=mod(uTime*uPartSpeed*sm+rL*per,per);
+  float life=t/per;
+  float emitAng=rA*6.2832;float emitR=uPartEmitRadius;
+  float px=0.,py=0.,pz=0.;
+  if(uPartEmitShape==1){px=cos(emitAng)*emitR;pz=sin(emitAng)*emitR;}
+  else if(uPartEmitShape==2){float theta=rA*6.2832;float phi=acos(2.*rR-1.);px=sin(phi)*cos(theta)*emitR;py=cos(phi)*emitR;pz=sin(phi)*sin(theta)*emitR;}
+  else if(uPartEmitShape==3){float coneR=emitR*life*0.5;px=cos(emitAng)*coneR;pz=sin(emitAng)*coneR;}
+  float ang=emitAng+life*uPartCurl*3.14*mix(1.,.5+rD,ch);
+  float r=uPartSpread*(.05+mix(rR,rR*rR,ch)*.95)*(1.+life*.3*ch);
+  px+=cos(ang)*r;pz+=sin(ang)*r;
+  py+=life*uPartHeight*mix(1.,.4+rSp*1.2,ch)-uPartHeight*.1;
+  float wa=mix(.01,.05+rW*.2,ch);
+  px+=sin(life*(8.+rD*15.)+rA*6.28)*wa;pz+=cos(life*(6.+rW*12.)+rR*6.28)*wa;py+=sin(life*(5.+rL*10.))*wa*.5;
+  if(uPartTurb>0.01){vec3 turbPos=vec3(px,py,pz)*uPartTurbScale+vec3(uTime*0.5);float nx=snoise3(turbPos);float ny=snoise3(turbPos+vec3(31.7,0.,0.));float nz=snoise3(turbPos+vec3(0.,47.3,0.));px+=nx*uPartTurb*life;py+=ny*uPartTurb*life*0.5;pz+=nz*uPartTurb*life;}
+  py-=uPartGravity*life*life*0.5;
+  float sr=mix(.5,pow(rS,2.),ch);
+  float sizeLife=life<0.15?life/0.15:mix(1.,uPartSizeEnd,smoothstep(0.15,1.,life));
+  float sz=uPartSize*(.15+sr*1.5)*sizeLife;
+  vec3 vel=vec3(cos(ang+0.01)*r-cos(ang)*r,uPartHeight*mix(1.,.4+rSp*1.2,ch)/per-uPartGravity*life,sin(ang+0.01)*r-sin(ang)*r);
+  vVel=vel;
+  vec2 co=aCorner*sz;
+  if(uPartTrail>0.01){vec4 mvCenter=modelViewMatrix*vec4(px,py,pz,1.);vec4 mvAhead=modelViewMatrix*vec4(px+vel.x*0.1,py+vel.y*0.1,pz+vel.z*0.1,1.);vec2 screenDir=normalize((mvAhead.xy/mvAhead.w-mvCenter.xy/mvCenter.w)+vec2(0.001));float trailStr=length(vel)*uPartTrail*2.;float cs=screenDir.x,sn=screenDir.y;co=vec2(co.x*cs-co.y*sn,co.x*sn+co.y*cs);co.y*=1.+trailStr;}
+  co.y*=uPartStretch;
+  vec4 mv=modelViewMatrix*vec4(px,py,pz,1.);mv.xy+=co;
+  vLife=life;vUv=aCorner;vSF=sr;
+  gl_Position=projectionMatrix*mv;
+}
+\`;
+
+// ── Particle Fragment Shader ──
+const particleFS = \`precision highp float;
+varying float vLife; varying vec2 vUv; varying float vSF; varying vec3 vVel;
+uniform vec3 uCol1, uCol2, uCol3, uCol4, uCol5;
+uniform float uGlowBase, uPartFlicker, uTime;
+void main(){
+  float d=length(vUv);if(d>1.)discard;
+  float core=exp(-d*d*8.);
+  float glow=exp(-d*d*2.);
+  float wisp=exp(-d*1.5)*(0.8+0.2*sin(atan(vUv.y,vUv.x)*3.+vLife*10.));
+  float t=vLife-vSF*.1;
+  vec3 col=uCol1;
+  col=mix(col,uCol2,smoothstep(0.05,0.25,t));
+  col=mix(col,uCol3,smoothstep(0.25,0.50,t));
+  col=mix(col,uCol4,smoothstep(0.50,0.75,t));
+  col=mix(col,uCol5,smoothstep(0.75,0.95,t));
+  col=mix(col,uCol1*1.5,core*0.4*(1.-vLife));
+  col*=uGlowBase*(1.+(1.-vSF)*.3);
+  float energy=mix(glow,wisp,0.3);
+  float fadeIn=smoothstep(0.,0.08,vLife);
+  float fadeOut=1.-smoothstep(0.6,1.,vLife);
+  float alpha=energy*fadeIn*fadeOut;
+  alpha*=1.-uPartFlicker*0.4*(sin(uTime*(15.+vSF*25.)+vLife*40.)*.5+.5);
+  col+=vec3(1.,.7,.3)*core*(1.-vLife)*0.3;
+  gl_FragColor=vec4(col,alpha);
+}
+\`;
+
+/**
+ * createParticleGeometry(count) — builds billboard quad geometry
+ * Each particle = 2 triangles (6 vertices) with aIndex and aCorner attributes.
+ */
+export function createParticleGeometry(count) {
+  const v = count * 6;
+  const pos = new Float32Array(v * 3);
+  const ai = new Float32Array(v);
+  const ac = new Float32Array(v * 2);
+  const co = [-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1];
+  for (let i = 0; i < count; i++) {
+    for (let j = 0; j < 6; j++) {
+      const vi = i * 6 + j;
+      pos[vi * 3] = 0;
+      ai[vi] = i;
+      ac[vi * 2] = co[j * 2];
+      ac[vi * 2 + 1] = co[j * 2 + 1];
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aIndex', new THREE.BufferAttribute(ai, 1));
+  g.setAttribute('aCorner', new THREE.BufferAttribute(ac, 2));
+  return g;
+}
+
+/**
+ * createParticleSystem(materialUniforms, overrides) — returns { mesh, uniforms }
+ * materialUniforms: the uniforms from createCelShadeMaterial() — colors are shared.
+ * Add the returned mesh to your scene.
+ */
+export function createParticleSystem(materialUniforms, overrides = {}) {
+  const params = {
+    partCount: ${p.partCount},
+    partSpeed: ${p.partSpeed},
+    partSpread: ${p.partSpread},
+    partLife: ${p.partLife},
+    partHeight: ${p.partHeight},
+    partSize: ${p.partSize},
+    partCurl: ${p.partCurl},
+    partChaos: ${p.partChaos},
+    partStretch: ${p.partStretch},
+    partFlicker: ${p.partFlicker},
+    partTurb: ${p.partTurb||0},
+    partTurbScale: ${p.partTurbScale||3},
+    partEmitShape: ${p.partEmitShape||0},
+    partEmitRadius: ${p.partEmitRadius||0.5},
+    partGravity: ${p.partGravity||0},
+    partSizeEnd: ${p.partSizeEnd||0.1},
+    partTrail: ${p.partTrail||0},
+    ...overrides
+  };
+
+  const pp = params;
+  const geometry = createParticleGeometry(pp.partCount);
+
+  const uniforms = {
+    uTime:           { value: 0 },
+    uPartSpeed:      { value: pp.partSpeed },
+    uPartSpread:     { value: pp.partSpread },
+    uPartLife:       { value: pp.partLife },
+    uPartHeight:     { value: pp.partHeight },
+    uPartSize:       { value: pp.partSize },
+    uPartCurl:       { value: pp.partCurl },
+    uPartChaos:      { value: pp.partChaos },
+    uPartStretch:    { value: pp.partStretch },
+    uPartFlicker:    { value: pp.partFlicker },
+    uPartTurb:       { value: pp.partTurb },
+    uPartTurbScale:  { value: pp.partTurbScale },
+    uPartEmitShape:  { value: pp.partEmitShape },
+    uPartEmitRadius: { value: pp.partEmitRadius },
+    uPartGravity:    { value: pp.partGravity },
+    uPartSizeEnd:    { value: pp.partSizeEnd },
+    uPartTrail:      { value: pp.partTrail },
+    // Shared with material — colors stay in sync
+    uCol1:     materialUniforms.uCol1,
+    uCol2:     materialUniforms.uCol2,
+    uCol3:     materialUniforms.uCol3,
+    uCol4:     materialUniforms.uCol4,
+    uCol5:     materialUniforms.uCol5,
+    uGlowBase: materialUniforms.uGlowBase,
+  };
+
+  const material = new THREE.ShaderMaterial({
+    vertexShader: particleVS,
+    fragmentShader: particleFS,
+    uniforms,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.userData.particleParams = params;
+  return { mesh, uniforms };
+}
+
+/**
+ * updateParticles(uniforms, time) — call in your animate loop
+ */
+export function updateParticles(uniforms, time) {
+  if (uniforms && uniforms.uTime) {
+    uniforms.uTime.value = time;
+  }
+}
+`:''}`;
   downloadText(code, exportPrefix()+'-material.js');
 }
 
