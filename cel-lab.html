@@ -591,12 +591,12 @@ body{background:var(--bg);overflow:hidden;display:flex;font-family:'SF Mono','Ca
           <button class="btn btn-blue" style="flex:1" onclick="doPreview()">PREVIEW</button>
         </div>
         <div style="display:flex;gap:4px;margin-top:4px">
-          <button class="btn btn-ghost" style="flex:1" onclick="exportGodotShader()">🎮 Godot Material</button>
+          <button class="btn btn-ghost" style="flex:1" onclick="renderMode==='bg'?exportGodotBG():exportGodotShader()">🎮 Godot Material</button>
           <button class="btn btn-ghost" style="flex:1" onclick="exportGodotPostFX()">🎮 Godot PostFX</button>
-          <button class="btn btn-ghost" style="flex:1" onclick="exportUnityShader()">🎮 Unity .shader</button>
+          <button class="btn btn-ghost" style="flex:1" onclick="renderMode==='bg'?exportUnityBG():exportUnityShader()">🎮 Unity .shader</button>
         </div>
         <div style="display:flex;gap:4px;margin-top:4px">
-          <button class="btn btn-blue" style="flex:1" onclick="exportThreeJS()">📦 Three.js Module</button>
+          <button class="btn btn-blue" style="flex:1" onclick="renderMode==='bg'?exportThreeJSBG():exportThreeJS()">📦 Three.js Module</button>
         </div>
         <div style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px">
           <div style="font-size:10px;color:var(--accent3);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">📦 PBR Material Pack</div>
@@ -7669,6 +7669,183 @@ const code=`Shader "Custom/CelShadeEditorPRO"
 `;
 downloadText(code,exportPrefix()+'.shader');}
 
+// ════════════════════════════════════════════════════════════
+//  BACKGROUND MODE SHADER EXPORTS
+// ════════════════════════════════════════════════════════════
+
+/** Export background as Godot canvas_item shader */
+function exportGodotBG(){const p=P;const c=k=>hexToV(p[k]).map(v=>v.toFixed(3));
+const code=`shader_type canvas_item;
+
+// ═══ CEL-LAB — Auto-generated Godot Background Shader ═══
+//
+// SETUP:
+//   1. Add a ColorRect node, set anchors to Full Rect
+//   2. Create a new ShaderMaterial and assign this shader
+//   3. The effect fills the entire rect as a procedural background
+
+vec3 mod289v3(vec3 x){return x-floor(x/289.0)*289.0;}vec4 mod289v4(vec4 x){return x-floor(x/289.0)*289.0;}
+vec4 permute(vec4 x){return mod289v4(((x*34.0)+1.0)*x);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+float snoise(vec3 v){const vec2 C=vec2(1.0/6.0,1.0/3.0);const vec4 D=vec4(0.0,0.5,1.0,2.0);vec3 i=floor(v+dot(v,C.yyy));vec3 x0=v-i+dot(i,C.xxx);vec3 g=step(x0.yzx,x0.xyz);vec3 l=1.0-g;vec3 i1=min(g,l.zxy);vec3 i2=max(g,l.zxy);vec3 x1=x0-i1+C.xxx;vec3 x2=x0-i2+C.yyy;vec3 x3=x0-D.yyy;i=mod289v3(i);vec4 pp=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));float n_=1.0/7.0;vec3 ns=n_*D.wyz-D.xzx;vec4 j=pp-49.0*floor(pp*ns.z*ns.z);vec4 x_=floor(j*ns.z);vec4 y_=floor(j-7.0*x_);vec4 x=x_*ns.x+ns.yyyy;vec4 y=y_*ns.x+ns.yyyy;vec4 h=1.0-abs(x)-abs(y);vec4 b0=vec4(x.xy,y.xy);vec4 b1=vec4(x.zw,y.zw);vec4 s0=floor(b0)*2.0+1.0;vec4 s1=floor(b1)*2.0+1.0;vec4 sh=-step(h,vec4(0.0));vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;vec3 p0=vec3(a0.xy,h.x);vec3 p1=vec3(a0.zw,h.y);vec3 p2=vec3(a1.xy,h.z);vec3 p3=vec3(a1.zw,h.w);vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0);m=m*m;return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));}
+
+uniform float flow_speed : hint_range(-5.0, 8.0) = ${p.flowSpeed.toFixed(2)};
+uniform float flow_scale : hint_range(-5.0, 10.0) = ${p.flowNoiseScale.toFixed(2)};
+uniform float disp1_amp : hint_range(-1.0, 1.5) = ${p.disp1Amp.toFixed(2)};
+uniform float disp1_freq : hint_range(-5.0, 10.0) = ${p.disp1Freq.toFixed(2)};
+uniform float disp2_amp : hint_range(-1.0, 1.0) = ${p.disp2Amp.toFixed(2)};
+uniform float disp2_freq : hint_range(-5.0, 15.0) = ${p.disp2Freq.toFixed(2)};
+uniform float disp3_amp : hint_range(-1.0, 1.0) = ${p.disp3Amp.toFixed(2)};
+uniform float disp3_freq : hint_range(-5.0, 15.0) = ${p.disp3Freq.toFixed(2)};
+uniform float noise_sharp : hint_range(0.1, 5.0) = ${p.noisePow.toFixed(2)};
+uniform float noise_warp : hint_range(-1.0, 1.0) = ${p.noiseWarp.toFixed(2)};
+uniform float twist : hint_range(-5.0, 5.0) = ${p.twist.toFixed(2)};
+uniform float shading_soft : hint_range(0.0, 1.0) = ${p.shadingSoft.toFixed(2)};
+uniform float thresh1 : hint_range(0.0, 1.0) = ${p.thresh1.toFixed(2)};
+uniform float thresh2 : hint_range(0.0, 1.0) = ${p.thresh2.toFixed(2)};
+uniform float thresh3 : hint_range(0.0, 1.0) = ${p.thresh3.toFixed(2)};
+uniform float thresh4 : hint_range(0.0, 1.0) = ${p.thresh4.toFixed(2)};
+uniform float edge_scale = ${p.edgeScale.toFixed(2)};
+uniform float edge_amount = ${p.edgeAmount.toFixed(3)};
+uniform float edge_detail = ${p.edgeDetail.toFixed(3)};
+uniform float glow_base = ${p.glowBase.toFixed(2)};
+uniform float glow_core = ${p.glowCore.toFixed(2)};
+uniform float emiss_intensity : hint_range(0.0, 3.0) = ${(p.emissIntensity||0).toFixed(2)};
+uniform float emiss_scale : hint_range(0.1, 20.0) = ${(p.emissScale||3).toFixed(2)};
+uniform float emiss_thresh : hint_range(0.0, 1.0) = ${(p.emissThresh||0.6).toFixed(2)};
+uniform vec3 emiss_color : source_color = vec3(${c('emissColor').join(', ')});
+uniform float iri_intensity : hint_range(0.0, 2.0) = ${(p.iriIntensity||0).toFixed(2)};
+uniform float iri_shift : hint_range(0.0, 5.0) = ${(p.iriShift||1).toFixed(2)};
+uniform vec3 col1 : source_color = vec3(${c('col1').join(', ')});
+uniform vec3 col2 : source_color = vec3(${c('col2').join(', ')});
+uniform vec3 col3 : source_color = vec3(${c('col3').join(', ')});
+uniform vec3 col4 : source_color = vec3(${c('col4').join(', ')});
+uniform vec3 col5 : source_color = vec3(${c('col5').join(', ')});
+
+float band_edge(float threshold, float tv) {
+    float s = max(shading_soft * 0.15, 0.001);
+    return mix(step(threshold, tv), smoothstep(threshold - s, threshold + s, tv), min(shading_soft, 1.0));
+}
+
+void fragment() {
+    vec2 uv = UV - 0.5;
+    float aspect = SCREEN_PIXEL_SIZE.y / SCREEN_PIXEL_SIZE.x;
+    uv.x *= aspect;
+
+    vec3 flow = vec3(uv * flow_scale, 0.0 - TIME * flow_speed);
+    if (abs(twist) > 0.001) {
+        float a = uv.y * twist * 2.0;
+        float c = cos(a); float s = sin(a);
+        flow = vec3(flow.x * c - flow.z * s, flow.y, flow.x * s + flow.z * c);
+    }
+    if (abs(noise_warp) > 0.001) {
+        flow += snoise(flow * 1.5 + vec3(10.0, 0.0, 5.0)) * noise_warp;
+    }
+
+    float d = snoise(flow * disp1_freq) * disp1_amp + snoise(flow * disp2_freq + vec3(4.0, 0.0, 2.0)) * disp2_amp + snoise(flow * disp3_freq + vec3(0.0, 7.0, 1.0)) * disp3_amp;
+    float sd = sign(d); d = sd * pow(abs(d), noise_sharp);
+    float t = clamp(d * 0.5 + 0.5, 0.0, 1.0);
+
+    vec3 eflow = vec3(uv * flow_scale, 0.0) + vec3(0.0, -TIME * flow_speed * 0.75, 0.0);
+    float edge_n = snoise(eflow * edge_scale) * edge_amount + snoise(eflow * edge_scale * 2.0 + vec3(2.0, 1.0, 4.0)) * edge_detail;
+    float tv = t + edge_n;
+
+    vec3 col = col1;
+    col = mix(col, col2, band_edge(thresh1, tv));
+    col = mix(col, col3, band_edge(thresh2, tv));
+    col = mix(col, col4, band_edge(thresh3, tv));
+    col = mix(col, col5, band_edge(thresh4, tv));
+    col *= glow_base + (1.0 - t) * glow_core;
+
+    if (emiss_intensity > 0.001) {
+        float en = snoise(vec3(uv * emiss_scale * 2.0, TIME * 0.3));
+        float emask = smoothstep(emiss_thresh - 0.05, emiss_thresh + 0.05, en);
+        col += emiss_color * emask * emiss_intensity;
+    }
+    if (iri_intensity > 0.001) {
+        float radial = length(uv) * 2.0;
+        float hue = radial * iri_shift * 6.2832;
+        vec3 iri = vec3(0.5 + 0.5 * cos(hue), 0.5 + 0.5 * cos(hue - 2.094), 0.5 + 0.5 * cos(hue + 2.094));
+        col = mix(col, col * iri * 2.0, radial * 0.3 * iri_intensity);
+    }
+    COLOR = vec4(col, 1.0);
+}
+`;
+downloadText(code,exportPrefix()+'-background.gdshader');}
+
+/** Export background as Unity unlit fullscreen shader */
+function exportUnityBG(){const p=P;const c=k=>hexToV(p[k]).map(v=>v.toFixed(3));
+const code=`Shader "Custom/CelLabBackground"
+{
+    Properties
+    {
+        _FlowSpeed ("Flow Speed", Range(-5, 8)) = ${p.flowSpeed.toFixed(2)}
+        _FlowScale ("Flow Scale", Range(-5, 10)) = ${p.flowNoiseScale.toFixed(2)}
+        _Disp1Amp ("Disp 1 Amp", Range(-1, 1.5)) = ${p.disp1Amp.toFixed(2)}
+        _Disp1Freq ("Disp 1 Freq", Range(-5, 10)) = ${p.disp1Freq.toFixed(2)}
+        _Disp2Amp ("Disp 2 Amp", Range(-1, 1)) = ${p.disp2Amp.toFixed(2)}
+        _Disp2Freq ("Disp 2 Freq", Range(-5, 15)) = ${p.disp2Freq.toFixed(2)}
+        _NoisePow ("Noise Sharp", Range(0.1, 5)) = ${p.noisePow.toFixed(2)}
+        _GlowBase ("Glow Base", Range(0, 5)) = ${p.glowBase.toFixed(2)}
+        _GlowCore ("Glow Core", Range(0, 4)) = ${p.glowCore.toFixed(2)}
+        _ShadingSoft ("Shading Softness", Range(0, 1)) = ${p.shadingSoft.toFixed(2)}
+        _Col1 ("Color 1", Color) = (${c('col1').join(', ')}, 1)
+        _Col2 ("Color 2", Color) = (${c('col2').join(', ')}, 1)
+        _Col3 ("Color 3", Color) = (${c('col3').join(', ')}, 1)
+        _Col4 ("Color 4", Color) = (${c('col4').join(', ')}, 1)
+        _Col5 ("Color 5", Color) = (${c('col5').join(', ')}, 1)
+        _Thresh1 ("Threshold 1", Range(0, 1)) = ${p.thresh1.toFixed(2)}
+        _Thresh2 ("Threshold 2", Range(0, 1)) = ${p.thresh2.toFixed(2)}
+        _Thresh3 ("Threshold 3", Range(0, 1)) = ${p.thresh3.toFixed(2)}
+        _Thresh4 ("Threshold 4", Range(0, 1)) = ${p.thresh4.toFixed(2)}
+    }
+    SubShader
+    {
+        Tags { "RenderType"="Opaque" "Queue"="Background" }
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include "UnityCG.cginc"
+
+            float _FlowSpeed, _FlowScale, _Disp1Amp, _Disp1Freq, _Disp2Amp, _Disp2Freq;
+            float _NoisePow, _GlowBase, _GlowCore, _ShadingSoft;
+            float _Thresh1, _Thresh2, _Thresh3, _Thresh4;
+            fixed4 _Col1, _Col2, _Col3, _Col4, _Col5;
+
+            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; };
+            v2f vert(appdata_base v) { v2f o; o.pos = UnityObjectToClipPos(v.vertex); o.uv = v.texcoord; return o; }
+
+            float snoise(float3 v) { return frac(sin(dot(v, float3(12.9898, 78.233, 45.164))) * 43758.5453); }
+            float bandEdge(float threshold, float tv) {
+                float s = max(_ShadingSoft * 0.15, 0.001);
+                return lerp(step(threshold, tv), smoothstep(threshold - s, threshold + s, tv), min(_ShadingSoft, 1.0));
+            }
+
+            fixed4 frag(v2f i) : SV_Target {
+                float2 uv = i.uv - 0.5;
+                float aspect = _ScreenParams.x / _ScreenParams.y;
+                uv.x *= aspect;
+                float3 flow = float3(uv * _FlowScale, -_Time.y * _FlowSpeed);
+                float d = snoise(flow * _Disp1Freq) * _Disp1Amp + snoise(flow * _Disp2Freq) * _Disp2Amp;
+                float sd = sign(d); d = sd * pow(abs(d), _NoisePow);
+                float t = saturate(d * 0.5 + 0.5);
+                float3 col = _Col1.rgb;
+                col = lerp(col, _Col2.rgb, bandEdge(_Thresh1, t));
+                col = lerp(col, _Col3.rgb, bandEdge(_Thresh2, t));
+                col = lerp(col, _Col4.rgb, bandEdge(_Thresh3, t));
+                col = lerp(col, _Col5.rgb, bandEdge(_Thresh4, t));
+                col *= _GlowBase + (1.0 - t) * _GlowCore;
+                return fixed4(col, 1);
+            }
+            ENDCG
+        }
+    }
+}
+`;
+downloadText(code,exportPrefix()+'-background.shader');}
+
 
 
 // ════════════════════════════════════════════════════════════
@@ -9567,6 +9744,176 @@ export function updateParticles(uniforms, time) {
   downloadText(code, exportPrefix()+'-material.js');
 }
 
+
+/** Export background as Three.js fullscreen quad module */
+function exportThreeJSBG(){
+  const p=P;
+  const c=k=>{const v=hexToV(p[k]);return v.map(x=>x.toFixed(4)).join(', ');};
+  const code=`// ═══════════════════════════════════════════════════════
+// Cel-Lab Background — Generated by Cel-Lab
+// Fullscreen procedural background for Three.js
+// ═══════════════════════════════════════════════════════
+// Usage:
+//   import { createBackground, updateBackground } from './${exportPrefix()}-background.js';
+//   const { mesh, uniforms } = createBackground();
+//   scene.add(mesh);
+//   // In your animate loop:
+//   updateBackground(uniforms, clock.getElapsedTime());
+// ═══════════════════════════════════════════════════════
+
+import * as THREE from 'three';
+
+const NOISE_GLSL = \`
+vec3 mod289v3(vec3 x){return x-floor(x/289.)*289.;}
+vec4 mod289v4(vec4 x){return x-floor(x/289.)*289.;}
+vec4 permute(vec4 x){return mod289v4(((x*34.)+1.)*x);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-.85373472095314*r;}
+float snoise(vec3 v){
+  const vec2 C=vec2(1./6.,1./3.);const vec4 D=vec4(0.,.5,1.,2.);
+  vec3 i=floor(v+dot(v,C.yyy));vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz);vec3 l=1.-g;vec3 i1=min(g,l.zxy);vec3 i2=max(g,l.zxy);
+  vec3 x1=x0-i1+C.xxx;vec3 x2=x0-i2+C.yyy;vec3 x3=x0-D.yyy;
+  i=mod289v3(i);
+  vec4 p=permute(permute(permute(i.z+vec4(0.,i1.z,i2.z,1.))+i.y+vec4(0.,i1.y,i2.y,1.))+i.x+vec4(0.,i1.x,i2.x,1.));
+  float n_=1./7.;vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.*floor(p*ns.z*ns.z);vec4 x_=floor(j*ns.z);vec4 y_=floor(j-7.*x_);
+  vec4 x=x_*ns.x+ns.yyyy;vec4 y=y_*ns.x+ns.yyyy;vec4 h=1.-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy);vec4 b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.+1.;vec4 s1=floor(b1)*2.+1.;
+  vec4 sh=-step(h,vec4(0.));
+  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x);vec3 p1=vec3(a0.zw,h.y);vec3 p2=vec3(a1.xy,h.z);vec3 p3=vec3(a1.zw,h.w);
+  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+  vec4 m=max(.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.);m=m*m;
+  return 42.*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}
+\`;
+
+const vertexShader = \`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position,1.);}\`;
+
+const fragmentShader = NOISE_GLSL + \`
+precision highp float;
+varying vec2 vUv;
+uniform float uTime;
+uniform vec2 uResolution;
+uniform float uDisp1Amp, uDisp1Freq, uDisp2Amp, uDisp2Freq, uDisp3Amp, uDisp3Freq;
+uniform float uFlowSpeed, uFlowNoiseScale, uNoisePow, uNoiseWarp, uTwist;
+uniform float uThresh1, uThresh2, uThresh3, uThresh4;
+uniform float uEdgeScale, uEdgeAmount, uEdgeDetail;
+uniform vec3 uCol1, uCol2, uCol3, uCol4, uCol5;
+uniform float uGlowBase, uGlowCore;
+uniform float uShadingSoft;
+uniform float uEmissScale, uEmissThresh, uEmissIntensity; uniform vec3 uEmissColor;
+uniform float uIriIntensity, uIriShift;
+
+float bandEdge(float thresh, float tv){
+  float s = max(uShadingSoft * 0.15, 0.001);
+  return mix(step(thresh, tv), smoothstep(thresh - s, thresh + s, tv), min(uShadingSoft, 1.));
+}
+
+void main(){
+  vec2 uv = vUv - 0.5;
+  float aspect = uResolution.x / uResolution.y;
+  uv.x *= aspect;
+
+  vec3 flow = vec3(uv * uFlowNoiseScale, 0. - uTime * uFlowSpeed);
+  if(abs(uTwist) > 0.001){
+    float a = uv.y * uTwist * 2.; float c = cos(a), s = sin(a);
+    flow = vec3(flow.x*c - flow.z*s, flow.y, flow.x*s + flow.z*c);
+  }
+  if(abs(uNoiseWarp) > 0.001){
+    flow += snoise(flow * 1.5 + vec3(10., 0., 5.)) * uNoiseWarp;
+  }
+
+  float d = snoise(flow * uDisp1Freq) * uDisp1Amp
+          + snoise(flow * uDisp2Freq + vec3(4., 0., 2.)) * uDisp2Amp
+          + snoise(flow * uDisp3Freq + vec3(0., 7., 1.)) * uDisp3Amp;
+  float sd = sign(d); d = sd * pow(abs(d), uNoisePow);
+  float t = clamp(d * 0.5 + 0.5, 0., 1.);
+
+  vec3 eflow = vec3(uv * uFlowNoiseScale, 0.) + vec3(0., -uTime * uFlowSpeed * 0.75, 0.);
+  float edgeN = snoise(eflow * uEdgeScale) * uEdgeAmount + snoise(eflow * uEdgeScale * 2. + vec3(2., 1., 4.)) * uEdgeDetail;
+  float tv = t + edgeN;
+
+  vec3 col = uCol1;
+  col = mix(col, uCol2, bandEdge(uThresh1, tv));
+  col = mix(col, uCol3, bandEdge(uThresh2, tv));
+  col = mix(col, uCol4, bandEdge(uThresh3, tv));
+  col = mix(col, uCol5, bandEdge(uThresh4, tv));
+  col *= uGlowBase + (1. - t) * uGlowCore;
+
+  if(uEmissIntensity > 0.001){
+    float en = snoise(vec3(uv * uEmissScale * 2., uTime * 0.3));
+    float emask = smoothstep(uEmissThresh - 0.05, uEmissThresh + 0.05, en);
+    col += uEmissColor * emask * uEmissIntensity;
+  }
+  if(uIriIntensity > 0.001){
+    float radial = length(uv) * 2.;
+    float hue = radial * uIriShift * 6.2832;
+    vec3 iri = vec3(.5+.5*cos(hue), .5+.5*cos(hue-2.094), .5+.5*cos(hue+2.094));
+    col = mix(col, col * iri * 2., radial * 0.3 * uIriIntensity);
+  }
+  gl_FragColor = vec4(col, 1.);
+}
+\`;
+
+function hexToVec3(hex) {
+  const r = parseInt(hex.slice(1,3), 16) / 255;
+  const g = parseInt(hex.slice(3,5), 16) / 255;
+  const b = parseInt(hex.slice(5,7), 16) / 255;
+  return new THREE.Vector3(r, g, b);
+}
+
+export function createBackground(overrides = {}) {
+  const params = {
+    flowSpeed: ${p.flowSpeed}, flowNoiseScale: ${p.flowNoiseScale},
+    disp1Amp: ${p.disp1Amp}, disp1Freq: ${p.disp1Freq},
+    disp2Amp: ${p.disp2Amp}, disp2Freq: ${p.disp2Freq},
+    disp3Amp: ${p.disp3Amp}, disp3Freq: ${p.disp3Freq},
+    noisePow: ${p.noisePow}, noiseWarp: ${p.noiseWarp}, twist: ${p.twist},
+    thresh1: ${p.thresh1}, thresh2: ${p.thresh2}, thresh3: ${p.thresh3}, thresh4: ${p.thresh4},
+    edgeScale: ${p.edgeScale}, edgeAmount: ${p.edgeAmount}, edgeDetail: ${p.edgeDetail},
+    col1: '${p.col1}', col2: '${p.col2}', col3: '${p.col3}', col4: '${p.col4}', col5: '${p.col5}',
+    glowBase: ${p.glowBase}, glowCore: ${p.glowCore}, shadingSoft: ${p.shadingSoft},
+    emissIntensity: ${p.emissIntensity||0}, emissScale: ${p.emissScale||3},
+    emissThresh: ${p.emissThresh||0.6}, emissColor: '${p.emissColor||'#ff4400'}',
+    iriIntensity: ${p.iriIntensity||0}, iriShift: ${p.iriShift||1},
+    ...overrides
+  };
+  const pp = params;
+  const uniforms = {
+    uTime: { value: 0 },
+    uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+    uDisp1Amp: { value: pp.disp1Amp }, uDisp1Freq: { value: pp.disp1Freq },
+    uDisp2Amp: { value: pp.disp2Amp }, uDisp2Freq: { value: pp.disp2Freq },
+    uDisp3Amp: { value: pp.disp3Amp }, uDisp3Freq: { value: pp.disp3Freq },
+    uFlowSpeed: { value: pp.flowSpeed }, uFlowNoiseScale: { value: pp.flowNoiseScale },
+    uNoisePow: { value: pp.noisePow }, uNoiseWarp: { value: pp.noiseWarp }, uTwist: { value: pp.twist },
+    uThresh1: { value: pp.thresh1 }, uThresh2: { value: pp.thresh2 },
+    uThresh3: { value: pp.thresh3 }, uThresh4: { value: pp.thresh4 },
+    uEdgeScale: { value: pp.edgeScale }, uEdgeAmount: { value: pp.edgeAmount }, uEdgeDetail: { value: pp.edgeDetail },
+    uCol1: { value: hexToVec3(pp.col1) }, uCol2: { value: hexToVec3(pp.col2) },
+    uCol3: { value: hexToVec3(pp.col3) }, uCol4: { value: hexToVec3(pp.col4) }, uCol5: { value: hexToVec3(pp.col5) },
+    uGlowBase: { value: pp.glowBase }, uGlowCore: { value: pp.glowCore },
+    uShadingSoft: { value: pp.shadingSoft },
+    uEmissScale: { value: pp.emissScale }, uEmissThresh: { value: pp.emissThresh },
+    uEmissIntensity: { value: pp.emissIntensity }, uEmissColor: { value: hexToVec3(pp.emissColor) },
+    uIriIntensity: { value: pp.iriIntensity }, uIriShift: { value: pp.iriShift },
+  };
+  const material = new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms, depthWrite: false });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+  mesh.frustumCulled = false;
+  return { mesh, uniforms };
+}
+
+export function updateBackground(uniforms, time, width, height) {
+  uniforms.uTime.value = time;
+  if (width && height) uniforms.uResolution.value.set(width, height);
+}
+`;
+  downloadText(code, exportPrefix()+'-background.js');
+}
 
 // BATCH EXPORT
 /** Batch export: render multiple presets as PNGs */

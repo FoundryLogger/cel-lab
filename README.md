@@ -98,13 +98,16 @@ No dependencies. No install. No internet required.
 - **Audio reactive** — Mic or file input, FFT bands mapped to shader parameters
 
 ### 🎲 Intelligent Randomizer
-12 archetype system (Inferno, Crystal, Organic, Cosmic, Toxic, Ethereal, Volcanic, Frozen, Electric, Void, Liquid, Mechanical) with color theory palettes and per-archetype feature correlation. Use it as a starting point, then shape the result into your own.
+12 archetype system (Inferno, Crystal, Organic, Cosmic, Toxic, Ethereal, Volcanic, Frozen, Electric, Void, Liquid, Mechanical) with color theory palettes and per-archetype feature correlation. Per-section dice buttons let you randomize only Displacement, Shape, Flow, Bands, or any other section independently for controlled mutations.
 
 ### ◉ SDF Raymarching
 Alternative render mode using signed distance fields:
 - 5 primitives with smooth boolean operations
 - Domain warping (twist, bend, noise)
 - Infinite repetition on 3 axes
+
+### ▣ Background Mode
+Fullscreen procedural pattern mode — the same noise, color banding, flow, emission, and iridescence system projected across the entire canvas. Design animated wallpapers, game backgrounds, or menu screens. Export to PNG (any aspect ratio), Godot, Unity, or Three.js.
 
 ### 💾 Persistence
 - Save/load custom presets with thumbnails (localStorage)
@@ -118,7 +121,7 @@ Alternative render mode using signed distance fields:
 
 | Format | Description |
 |--------|-------------|
-| **PNG** | Single frame, up to 2048px (transparent background supported) |
+| **PNG** | Single frame, up to 2048px, transparent background, widescreen aspect ratios (16:9, 21:9, 9:16) |
 | **Normal Map** | Auto-generated from displaced surface |
 | **PNG + Normal** | Both maps in one click |
 | **Spritesheet** | N frames tiled in grid |
@@ -128,7 +131,7 @@ Alternative render mode using signed distance fields:
 | **Godot Material** | Spatial shader with displacement, cel-shading, iridescence, emission, overlays |
 | **Godot PostFX** | Screen-space canvas_item shader — bloom, chromatic aberration, vignette, tone mapping, grain, god rays, split-tone, scanlines, and more |
 | **Unity .shader** | ShaderLab + CGPROGRAM, inspector-ready |
-| **Three.js module** | ES module with `createCelShadeMaterial()` |
+| **Three.js module** | ES module with `createCelShadeMaterial()` + particle system |
 
 ---
 
@@ -139,15 +142,36 @@ Alternative render mode using signed distance fields:
 Click **📦 Three.js Module** in the Export tab:
 
 ```javascript
-import { createCelShadeMaterial, updateCelShade, createCelShadeGeometry } from './cel-shade-material.js';
+import { createCelShadeMaterial, createCelShadeGeometry,
+         createParticleSystem, updateParticles } from './cel-shade-material.js';
 
 const material = createCelShadeMaterial();
-const geometry = createCelShadeGeometry('sphere');
-const mesh = new THREE.Mesh(geometry, material);
+const mesh = new THREE.Mesh(createCelShadeGeometry('sphere'), material);
+scene.add(mesh);
+
+// Particles (included when active in the editor)
+const { mesh: particles, uniforms: partUniforms } = createParticleSystem(material.uniforms);
+scene.add(particles);
+
+function animate() {
+  const t = clock.getElapsedTime();
+  material.uniforms.uTime.value = t;
+  updateParticles(partUniforms, t);
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+```
+
+In **Background mode**, the export changes to a fullscreen quad shader:
+
+```javascript
+import { createBackground, updateBackground } from './cel-background.js';
+
+const { mesh, uniforms } = createBackground();
 scene.add(mesh);
 
 function animate() {
-  updateCelShade(material, clock.getElapsedTime());
+  updateBackground(uniforms, clock.getElapsedTime(), window.innerWidth, window.innerHeight);
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
@@ -163,9 +187,11 @@ Two shaders are available:
 
 PostFX setup: add a `CanvasLayer` (layer 100+) with a full-rect `ColorRect` and assign the shader. For higher quality bloom, combine with Godot's built-in Glow in `WorldEnvironment`.
 
+In **Background mode**, the material export switches to a `canvas_item` fullscreen shader. Assign it to a `ColorRect` with Full Rect anchors — the procedural pattern fills the entire screen.
+
 ### Unity
 
-Click **🎮 Unity .shader** — exports ShaderLab with CGPROGRAM surface shader. Properties exposed in the Material Inspector.
+Click **🎮 Unity .shader** — exports ShaderLab with CGPROGRAM surface shader. Properties exposed in the Material Inspector. In Background mode, exports an unlit fullscreen shader with `Queue=Background`.
 
 ---
 
