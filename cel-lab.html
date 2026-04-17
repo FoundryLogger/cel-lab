@@ -9330,12 +9330,21 @@ uniform float uTime, uDisp1Amp, uDisp1Freq, uDisp2Amp, uDisp2Freq, uDisp3Amp, uD
 uniform float uUpBias, uFlowSpeed, uFlowNoiseScale;
 uniform float uStretchY, uTaper, uNoisePow, uNoiseWarp, uAsymX, uAsymZ;
 uniform float uProfileBot, uProfileMid, uProfileTop, uTwist;
+uniform int uMorphTarget; uniform float uMorphBlend;
+vec3 morphToCube(vec3 p){vec3 n=normalize(p);float m=max(abs(n.x),max(abs(n.y),abs(n.z)));return n/m*0.7;}
+vec3 morphToCylinder(vec3 p){vec3 n=normalize(p);vec2 xz=normalize(n.xz)*0.8;float y=clamp(n.y*1.5,-1.,1.);return vec3(xz.x,y,xz.y);}
+vec3 morphToTorus(vec3 p){vec3 n=normalize(p);float theta=atan(n.z,n.x);float phi=asin(clamp(n.y,-1.,1.))*2.;float R=0.7,r=0.35;return vec3((R+r*cos(phi))*cos(theta),r*sin(phi),(R+r*cos(phi))*sin(theta));}
+vec3 morphToCone(vec3 p){vec3 n=normalize(p);float y=n.y*1.2;float t=1.-(y*.5+.5);float rad=max(t,0.05)*0.8;float theta=atan(n.z,n.x);return vec3(cos(theta)*rad,y,sin(theta)*rad);}
+vec3 morphToIco(vec3 p){vec3 n=normalize(p);vec3 a=abs(n);float mx=max(a.x,max(a.y,a.z));float md=a.x+a.y+a.z;return n*mix(1./mx,1.73205/md,0.6)*0.75;}
+vec3 applyMorph(vec3 p,int target,float blend){if(blend<0.001)return p;vec3 mp=p;if(target==1)mp=morphToCube(p);else if(target==2)mp=morphToCylinder(p);else if(target==3)mp=morphToTorus(p);else if(target==4)mp=morphToCone(p);else if(target==5)mp=morphToIco(p);else return p;return mix(p,mp,blend);}
 
 void main(){
-  vec3 n = normalize(normal);
+  vec3 basePos = position; vec3 baseNorm = normal;
+  if(uMorphBlend > 0.001){ basePos = applyMorph(position, uMorphTarget, uMorphBlend); baseNorm = normalize(applyMorph(position+normal*0.01, uMorphTarget, uMorphBlend)-basePos); }
+  vec3 n = normalize(baseNorm);
   vec3 flow = n * uFlowNoiseScale + vec3(0., -uTime * uFlowSpeed, 0.);
   if(abs(uTwist) > 0.001){
-    float a = position.y * uTwist; float c = cos(a), s = sin(a);
+    float a = basePos.y * uTwist; float c = cos(a), s = sin(a);
     flow = vec3(flow.x*c - flow.z*s, flow.y, flow.x*s + flow.z*c);
   }
   if(abs(uNoiseWarp) > 0.001){
@@ -9348,14 +9357,14 @@ void main(){
   float sd = sign(d); d = sd * pow(abs(d), uNoisePow);
   d *= (1. + n.y * uUpBias + n.x * uAsymX + n.z * uAsymZ);
   d *= 1. + (n.y * .5 + .5) * uTaper;
-  vec3 np = position + n * d;
+  vec3 np = basePos + n * d;
   np.y *= uStretchY;
   float h = clamp(np.y / max(uStretchY, 0.01), -1., 1.);
   float pw;
   if(h < 0.){ float t = smoothstep(0., 1., h + 1.); pw = mix(uProfileBot, uProfileMid, t); }
   else { float t = smoothstep(0., 1., h); pw = mix(uProfileMid, uProfileTop, t); }
   np.x *= pw; np.z *= pw;
-  vDist = length(np); vPos = np; vObjY = position.y;
+  vDist = length(np); vPos = np; vObjY = basePos.y;
   vWorldNormal = normalize((modelMatrix * vec4(n, 0.)).xyz);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(np, 1.);
 }
@@ -9376,6 +9385,8 @@ uniform float uIriIntensity, uIriShift;
 uniform float uEmissScale, uEmissThresh, uEmissIntensity; uniform vec3 uEmissColor;
 uniform float uSSSIntensity, uSSSPower; uniform vec3 uSSSColor;
 uniform float uAlphaCutoff, uLayerOpacity;
+uniform int uDissolveMode;
+uniform int uOverlayType; uniform float uOverlayScale, uOverlayMix;
 
 float bandEdge(float thresh, float tv){
   float s = max(uShadingSoft * 0.15, 0.001);
@@ -9434,9 +9445,23 @@ void main(){
     col += uSSSColor * (sss + backScatter) * uSSSIntensity;
   }
 
+  // Procedural overlay
+  if(uOverlayType > 0 && uOverlayMix > 0.001){
+    vec2 sc = vPos.xy * uOverlayScale; float pat = 0.;
+    if(uOverlayType == 1){ pat = step(0.6, sin(sc.x*6.2832)*sin(sc.y*6.2832)); }
+    else if(uOverlayType == 2){ pat = step(0.4, sin((sc.x+sc.y)*6.2832)*0.5+0.5); }
+    else if(uOverlayType == 3){ float h1=step(0.4,sin((sc.x+sc.y)*6.2832)*0.5+0.5);float h2=step(0.4,sin((sc.x-sc.y)*6.2832)*0.5+0.5);pat=max(h1,h2); }
+    col = mix(col, col*(1.-pat*0.6*(1.-t+0.2)), uOverlayMix);
+  }
+
   float alpha = 1.;
   if(uAlphaCutoff > 0.001){
-    alpha = 1. - smoothstep(1. - uAlphaCutoff - .05, 1. - uAlphaCutoff + .05, t);
+    float dv;
+    if(uDissolveMode == 1){ dv = voronoi(vPos*4.)*.5+.5; }
+    else if(uDissolveMode == 2){ dv = fract(sin(dot(floor(vPos*15.),vec3(12.9898,78.233,45.164)))*43758.5453); }
+    else if(uDissolveMode == 3){ dv = length(vPos.xz)/2.; }
+    else { dv = t; }
+    alpha = 1. - smoothstep(1.-uAlphaCutoff-.05, 1.-uAlphaCutoff+.05, dv);
   }
   gl_FragColor = vec4(col, alpha * uLayerOpacity);
 }
@@ -9492,6 +9517,12 @@ export function createCelShadeMaterial(overrides = {}) {
     // SSS
     sssIntensity: ${p.sssIntensity||0}, sssPower: ${p.sssPower||2},
     sssColor: '${p.sssColor||'#ff4422'}',
+    // Morph
+    morphTarget: ${p.morphTarget||0}, morphBlend: ${p.morphBlend||0},
+    // Overlay
+    overlayType: ${p.overlayType||0}, overlayScale: ${p.overlayScale||20}, overlayMix: ${p.overlayMix||0},
+    // Dissolve
+    dissolveMode: ${p.dissolveMode||0},
     // Override with user values
     ...overrides
   };
@@ -9552,6 +9583,12 @@ export function createCelShadeMaterial(overrides = {}) {
       uSSSIntensity:  { value: p.sssIntensity },
       uSSSPower:      { value: p.sssPower },
       uSSSColor:      { value: hexToVec3(p.sssColor) },
+      uMorphTarget:   { value: p.morphTarget },
+      uMorphBlend:    { value: p.morphBlend },
+      uOverlayType:   { value: p.overlayType },
+      uOverlayScale:  { value: p.overlayScale },
+      uOverlayMix:    { value: p.overlayMix },
+      uDissolveMode:  { value: p.dissolveMode },
       uLayerOpacity:  { value: 1.0 },
     },
     side: THREE.DoubleSide,
