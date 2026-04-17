@@ -7370,7 +7370,29 @@ void fragment() {
     ALBEDO = col;
 }
 `;
-downloadText(code,exportPrefix()+'-material.gdshader');}
+downloadText(code,exportPrefix()+'-material.gdshader');
+// Export active layers as separate shaders
+[{lp:p.layer2,name:'layer2'},{lp:p.layer3,name:'layer3'}].forEach(({lp,name})=>{
+  if(!lp||!lp.layerEnabled)return;
+  const lc=k=>hexToV(lp[k]||'#000000').map(v=>v.toFixed(3));
+  const lCode=code
+    .replace(/flow_speed[^;]*= [^;]+;/,`flow_speed : hint_range(-5.0, 8.0) = ${lp.flowSpeed.toFixed(2)};`)
+    .replace(/flow_scale[^;]*= [^;]+;/,`flow_scale : hint_range(-5.0, 10.0) = ${lp.flowNoiseScale.toFixed(2)};`)
+    .replace(/disp1_amp[^;]*= [^;]+;/,`disp1_amp : hint_range(-1.0, 1.5) = ${lp.disp1Amp.toFixed(2)};`)
+    .replace(/disp1_freq[^;]*= [^;]+;/,`disp1_freq : hint_range(-5.0, 10.0) = ${lp.disp1Freq.toFixed(2)};`)
+    .replace(/disp2_amp[^;]*= [^;]+;/,`disp2_amp : hint_range(-1.0, 1.0) = ${lp.disp2Amp.toFixed(2)};`)
+    .replace(/disp2_freq[^;]*= [^;]+;/,`disp2_freq : hint_range(-5.0, 15.0) = ${lp.disp2Freq.toFixed(2)};`)
+    .replace(/render_mode blend_mix, depth_draw_opaque, cull_back, unshaded/,
+      'render_mode blend_mix, depth_draw_opaque, cull_back, unshaded')
+    .replace(/uniform vec3 col1[^;]*;/,`uniform vec3 col1 : source_color = vec3(${lc('col1').join(', ')});`)
+    .replace(/uniform vec3 col2[^;]*;/,`uniform vec3 col2 : source_color = vec3(${lc('col2').join(', ')});`)
+    .replace(/uniform vec3 col3[^;]*;/,`uniform vec3 col3 : source_color = vec3(${lc('col3').join(', ')});`)
+    .replace(/uniform vec3 col4[^;]*;/,`uniform vec3 col4 : source_color = vec3(${lc('col4').join(', ')});`)
+    .replace(/uniform vec3 col5[^;]*;/,`uniform vec3 col5 : source_color = vec3(${lc('col5').join(', ')});`)
+    .replace(/glow_base[^;]*= [^;]+;/,`glow_base = ${lp.glowBase.toFixed(2)};`)
+    .replace(/glow_core[^;]*= [^;]+;/,`glow_core = ${lp.glowCore.toFixed(2)};`);
+  downloadText(lCode,exportPrefix()+'-'+name+'.gdshader');
+});}
 
 /** Export post-processing as Godot canvas_item shader */
 function exportGodotPostFX(){const p=P;const c=k=>{const v=hexToV(p[k]||'#000000');return v.map(x=>x.toFixed(3));};
@@ -7667,7 +7689,22 @@ const code=`Shader "Custom/CelShadeEditorPRO"
     FallBack "Diffuse"
 }
 `;
-downloadText(code,exportPrefix()+'.shader');}
+downloadText(code,exportPrefix()+'.shader');
+[{lp:p.layer2,name:'layer2'},{lp:p.layer3,name:'layer3'}].forEach(({lp,name})=>{
+  if(!lp||!lp.layerEnabled)return;
+  const lc=k=>hexToV(lp[k]||'#000000').map(v=>v.toFixed(3));
+  const lCode=code
+    .replace(/Shader "Custom\/CelShadeEditorPRO"/,`Shader "Custom/CelShade_${name}"`)
+    .replace(/"Queue"="Geometry"/,`"Queue"="Transparent"`)
+    .replace(/_Col1 \("Core Color", Color\) = \([^)]+\)/,`_Col1 ("Core Color", Color) = (${lc('col1').join(', ')}, 1)`)
+    .replace(/_Col2 \("Band 2", Color\) = \([^)]+\)/,`_Col2 ("Band 2", Color) = (${lc('col2').join(', ')}, 1)`)
+    .replace(/_Col3 \("Band 3", Color\) = \([^)]+\)/,`_Col3 ("Band 3", Color) = (${lc('col3').join(', ')}, 1)`)
+    .replace(/_Col4 \("Band 4", Color\) = \([^)]+\)/,`_Col4 ("Band 4", Color) = (${lc('col4').join(', ')}, 1)`)
+    .replace(/_Col5 \("Tips Color", Color\) = \([^)]+\)/,`_Col5 ("Tips Color", Color) = (${lc('col5').join(', ')}, 1)`)
+    .replace(/_GlowBase \("Glow Base"[^)]+\) = [^\n]+/,`_GlowBase ("Glow Base", Range(0, 5)) = ${lp.glowBase.toFixed(2)}`)
+    .replace(/_GlowCore \("Glow Core"[^)]+\) = [^\n]+/,`_GlowCore ("Glow Core", Range(0, 4)) = ${lp.glowCore.toFixed(2)}`);
+  downloadText(lCode,exportPrefix()+'-'+name+'.shader');
+});}
 
 // ════════════════════════════════════════════════════════════
 //  BACKGROUND MODE SHADER EXPORTS
@@ -9539,6 +9576,108 @@ export function updateCelShade(material, time) {
 // ═══════════════════════════════════════════════════════
 // Recommended geometry (high subdivision for displacement)
 // ═══════════════════════════════════════════════════════
+/**
+ * createLayerMaterial(params) — creates a layer material (transparent, blended)
+ * blendMode: 0=Normal, 1=Additive, 2=Multiply
+ */
+export function createLayerMaterial(overrides = {}) {
+  const params = { ...overrides };
+  const p = params;
+  const blendModes = { 0: THREE.NormalBlending, 1: THREE.AdditiveBlending, 2: THREE.MultiplyBlending };
+  const material = new THREE.ShaderMaterial({
+    vertexShader, fragmentShader,
+    uniforms: {
+      uTime:{value:0}, uNoiseType:{value:p.noiseType||0},
+      uDisp1Amp:{value:p.disp1Amp}, uDisp1Freq:{value:p.disp1Freq},
+      uDisp2Amp:{value:p.disp2Amp}, uDisp2Freq:{value:p.disp2Freq},
+      uDisp3Amp:{value:p.disp3Amp||0}, uDisp3Freq:{value:p.disp3Freq||1},
+      uUpBias:{value:p.upBias||0}, uFlowSpeed:{value:p.flowSpeed}, uFlowNoiseScale:{value:p.flowNoiseScale},
+      uStretchY:{value:p.stretchY||1}, uTaper:{value:p.taper||0},
+      uNoisePow:{value:p.noisePow||1}, uNoiseWarp:{value:p.noiseWarp||0},
+      uAsymX:{value:p.asymX||0}, uAsymZ:{value:p.asymZ||0},
+      uProfileBot:{value:p.profileBot||1}, uProfileMid:{value:p.profileMid||1}, uProfileTop:{value:p.profileTop||1},
+      uTwist:{value:p.twist||0}, uAlphaCutoff:{value:p.alphaCutoff||0},
+      uThresh1:{value:p.thresh1}, uThresh2:{value:p.thresh2},
+      uThresh3:{value:p.thresh3}, uThresh4:{value:p.thresh4},
+      uEdgeScale:{value:p.edgeScale||4}, uEdgeAmount:{value:p.edgeAmount||0}, uEdgeDetail:{value:p.edgeDetail||0},
+      uCol1:{value:hexToVec3(p.col1)}, uCol2:{value:hexToVec3(p.col2)},
+      uCol3:{value:hexToVec3(p.col3)}, uCol4:{value:hexToVec3(p.col4)}, uCol5:{value:hexToVec3(p.col5)},
+      uGlowBase:{value:p.glowBase}, uGlowCore:{value:p.glowCore},
+      uDistMin:{value:p.distMin}, uDistRange:{value:p.distRange},
+      uRimIntensity:{value:p.rimIntensity||0}, uRimPower:{value:p.rimPower||2},
+      uRimColor:{value:hexToVec3(p.rimColor||'#ffffff')},
+      uShadingSoft:{value:p.shadingSoft||0},
+      uIriIntensity:{value:p.iriIntensity||0}, uIriShift:{value:p.iriShift||1},
+      uEmissScale:{value:p.emissScale||3}, uEmissThresh:{value:p.emissThresh||0.6},
+      uEmissIntensity:{value:p.emissIntensity||0}, uEmissColor:{value:hexToVec3(p.emissColor||'#ff4400')},
+      uSSSIntensity:{value:p.sssIntensity||0}, uSSSPower:{value:p.sssPower||2},
+      uSSSColor:{value:hexToVec3(p.sssColor||'#ff4422')},
+      uLayerOpacity:{value:p.layerOpacity||0.5},
+    },
+    side: THREE.DoubleSide, transparent: true, depthWrite: false,
+    blending: blendModes[p.blendMode||0] || THREE.NormalBlending,
+  });
+  return material;
+}
+${p.layer2&&p.layer2.layerEnabled?`
+// ═══════════════════════════════════════════════════════
+// Layer 2
+// ═══════════════════════════════════════════════════════
+export function createLayer2(overrides = {}) {
+  return createLayerMaterial({
+    noiseType:${p.layer2.noiseType||0}, blendMode:${p.layer2.blendMode||0},
+    disp1Amp:${p.layer2.disp1Amp},disp1Freq:${p.layer2.disp1Freq},
+    disp2Amp:${p.layer2.disp2Amp},disp2Freq:${p.layer2.disp2Freq},
+    disp3Amp:${p.layer2.disp3Amp||0},disp3Freq:${p.layer2.disp3Freq||1},
+    upBias:${p.layer2.upBias||0},flowSpeed:${p.layer2.flowSpeed},flowNoiseScale:${p.layer2.flowNoiseScale},
+    stretchY:${p.layer2.stretchY||1},taper:${p.layer2.taper||0},
+    noisePow:${p.layer2.noisePow||1},noiseWarp:${p.layer2.noiseWarp||0},
+    twist:${p.layer2.twist||0},alphaCutoff:${p.layer2.alphaCutoff||0},
+    thresh1:${p.layer2.thresh1},thresh2:${p.layer2.thresh2},
+    thresh3:${p.layer2.thresh3},thresh4:${p.layer2.thresh4},
+    edgeScale:${p.layer2.edgeScale||4},edgeAmount:${p.layer2.edgeAmount||0},
+    col1:'${p.layer2.col1}',col2:'${p.layer2.col2}',col3:'${p.layer2.col3}',
+    col4:'${p.layer2.col4}',col5:'${p.layer2.col5}',
+    glowBase:${p.layer2.glowBase},glowCore:${p.layer2.glowCore},
+    distMin:${p.layer2.distMin},distRange:${p.layer2.distRange},
+    rimIntensity:${p.layer2.rimIntensity||0},rimColor:'${p.layer2.rimColor||'#ffffff'}',
+    shadingSoft:${p.layer2.shadingSoft||0},
+    iriIntensity:${p.layer2.iriIntensity||0},emissIntensity:${p.layer2.emissIntensity||0},
+    sssIntensity:${p.layer2.sssIntensity||0},
+    layerOpacity:${p.layer2.layerOpacity},
+    ...overrides
+  });
+}
+`:''}${p.layer3&&p.layer3.layerEnabled?`
+// ═══════════════════════════════════════════════════════
+// Layer 3
+// ═══════════════════════════════════════════════════════
+export function createLayer3(overrides = {}) {
+  return createLayerMaterial({
+    noiseType:${p.layer3.noiseType||0}, blendMode:${p.layer3.blendMode||0},
+    disp1Amp:${p.layer3.disp1Amp},disp1Freq:${p.layer3.disp1Freq},
+    disp2Amp:${p.layer3.disp2Amp},disp2Freq:${p.layer3.disp2Freq},
+    disp3Amp:${p.layer3.disp3Amp||0},disp3Freq:${p.layer3.disp3Freq||1},
+    upBias:${p.layer3.upBias||0},flowSpeed:${p.layer3.flowSpeed},flowNoiseScale:${p.layer3.flowNoiseScale},
+    stretchY:${p.layer3.stretchY||1},taper:${p.layer3.taper||0},
+    noisePow:${p.layer3.noisePow||1},noiseWarp:${p.layer3.noiseWarp||0},
+    twist:${p.layer3.twist||0},alphaCutoff:${p.layer3.alphaCutoff||0},
+    thresh1:${p.layer3.thresh1},thresh2:${p.layer3.thresh2},
+    thresh3:${p.layer3.thresh3},thresh4:${p.layer3.thresh4},
+    edgeScale:${p.layer3.edgeScale||4},edgeAmount:${p.layer3.edgeAmount||0},
+    col1:'${p.layer3.col1}',col2:'${p.layer3.col2}',col3:'${p.layer3.col3}',
+    col4:'${p.layer3.col4}',col5:'${p.layer3.col5}',
+    glowBase:${p.layer3.glowBase},glowCore:${p.layer3.glowCore},
+    distMin:${p.layer3.distMin},distRange:${p.layer3.distRange},
+    rimIntensity:${p.layer3.rimIntensity||0},rimColor:'${p.layer3.rimColor||'#ffffff'}',
+    shadingSoft:${p.layer3.shadingSoft||0},
+    iriIntensity:${p.layer3.iriIntensity||0},emissIntensity:${p.layer3.emissIntensity||0},
+    sssIntensity:${p.layer3.sssIntensity||0},
+    layerOpacity:${p.layer3.layerOpacity},
+    ...overrides
+  });
+}
+`:''}
 export function createCelShadeGeometry(type = 'sphere') {
   switch(type) {
     case 'sphere': return new THREE.SphereGeometry(1, 96, 96);
