@@ -7255,6 +7255,10 @@ uniform vec3 emiss_color : source_color = vec3(${c('emissColor').join(', ')});
 uniform int overlay_type = ${p.overlayType};
 uniform float overlay_scale : hint_range(1.0, 100.0) = ${p.overlayScale.toFixed(2)};
 uniform float overlay_mix : hint_range(0.0, 1.0) = ${p.overlayMix.toFixed(2)};
+uniform float alpha_cutoff : hint_range(0.0, 1.0) = ${p.alphaCutoff.toFixed(2)};
+uniform int dissolve_mode = ${p.dissolveMode||0};
+uniform int morph_target = ${p.morphTarget||0};
+uniform float morph_blend : hint_range(0.0, 1.0) = ${(p.morphBlend||0).toFixed(2)};
 
 varying float v_dist;
 varying vec3 v_pos;
@@ -7266,11 +7270,20 @@ float band_edge(float threshold, float tv) {
     return mix(step(threshold, tv), smoothstep(threshold - s, threshold + s, tv), min(shading_soft, 1.0));
 }
 
+vec3 morph_cube(vec3 p){vec3 n=normalize(p);float m=max(abs(n.x),max(abs(n.y),abs(n.z)));return n/m*0.7;}
+vec3 morph_cylinder(vec3 p){vec3 n=normalize(p);vec2 xz=normalize(n.xz)*0.8;float y=clamp(n.y*1.5,-1.0,1.0);return vec3(xz.x,y,xz.y);}
+vec3 morph_torus(vec3 p){vec3 n=normalize(p);float theta=atan(n.z,n.x);float phi=asin(clamp(n.y,-1.0,1.0))*2.0;float R=0.7;float r=0.35;return vec3((R+r*cos(phi))*cos(theta),r*sin(phi),(R+r*cos(phi))*sin(theta));}
+vec3 morph_cone(vec3 p){vec3 n=normalize(p);float y=n.y*1.2;float t2=1.0-(y*0.5+0.5);float rad=max(t2,0.05)*0.8;float theta=atan(n.z,n.x);return vec3(cos(theta)*rad,y,sin(theta)*rad);}
+vec3 morph_ico(vec3 p){vec3 n=normalize(p);vec3 a=abs(n);float mx=max(a.x,max(a.y,a.z));float md=a.x+a.y+a.z;return n*mix(1.0/mx,1.73205/md,0.6)*0.75;}
+vec3 apply_morph(vec3 p,int tgt,float bl){if(bl<0.001)return p;vec3 mp=p;if(tgt==1)mp=morph_cube(p);else if(tgt==2)mp=morph_cylinder(p);else if(tgt==3)mp=morph_torus(p);else if(tgt==4)mp=morph_cone(p);else if(tgt==5)mp=morph_ico(p);else return p;return mix(p,mp,bl);}
+
 void vertex() {
-    vec3 n = normalize(NORMAL);
+    vec3 base_pos = VERTEX; vec3 base_norm = NORMAL;
+    if (morph_blend > 0.001) { base_pos = apply_morph(VERTEX, morph_target, morph_blend); base_norm = normalize(apply_morph(VERTEX + NORMAL*0.01, morph_target, morph_blend) - base_pos); }
+    vec3 n = normalize(base_norm);
     vec3 flow = n * flow_scale + vec3(0.0, -TIME * flow_speed, 0.0);
     if (abs(twist) > 0.001) {
-        float a = VERTEX.y * twist;
+        float a = base_pos.y * twist;
         float c = cos(a); float s = sin(a);
         flow = vec3(flow.x * c - flow.z * s, flow.y, flow.x * s + flow.z * c);
     }
@@ -7282,7 +7295,7 @@ void vertex() {
     d = sd * pow(abs(d), noise_sharp);
     d *= (1.0 + n.y * up_bias + n.x * asym_x + n.z * asym_z);
     d *= 1.0 + (n.y * 0.5 + 0.5) * taper;
-    vec3 np = VERTEX + n * d;
+    vec3 np = base_pos + n * d;
     np.y *= stretch_y;
     float h = clamp(np.y / max(stretch_y, 0.01), -1.0, 1.0);
     float pw;
@@ -7297,8 +7310,8 @@ void vertex() {
     np.z *= pw;
     v_dist = length(np);
     v_pos = np;
-    v_obj_y = VERTEX.y;
-    v_world_normal = (MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz;
+    v_obj_y = base_pos.y;
+    v_world_normal = (MODEL_MATRIX * vec4(base_norm, 0.0)).xyz;
     VERTEX = np;
 }
 
@@ -7365,6 +7378,18 @@ void fragment() {
             pat = max(h1, h2);
         }
         col = mix(col, col * (1.0 - pat * 0.6 * (1.0 - t + 0.2)), overlay_mix);
+    }
+
+    // Dissolve
+    if (alpha_cutoff > 0.001) {
+        float dv;
+        if (dissolve_mode == 1) { dv = fract(sin(dot(floor(v_pos*4.0), vec3(127.1,311.7,74.7)))*43758.5453)*0.5+0.5; }
+        else if (dissolve_mode == 2) { dv = fract(sin(dot(floor(v_pos*15.0), vec3(12.9898,78.233,45.164)))*43758.5453); }
+        else if (dissolve_mode == 3) { dv = length(v_pos.xz) / 2.0; }
+        else { dv = t; }
+        float alph = 1.0 - smoothstep(1.0 - alpha_cutoff - 0.05, 1.0 - alpha_cutoff + 0.05, dv);
+        if (alph < 0.01) discard;
+        ALPHA = alph;
     }
 
     ALBEDO = col;
@@ -7626,6 +7651,14 @@ const code=`Shader "Custom/CelShadeEditorPRO"
         _SSSColor ("SSS Color", Color) = (${c('sssColor').join(', ')}, 1)
         _SSSIntensity ("SSS Intensity", Range(0, 3)) = ${p.sssIntensity.toFixed(2)}
         _SSSPower ("SSS Power", Range(0.5, 8)) = ${p.sssPower.toFixed(2)}
+        _EdgeScale ("Edge Scale", Float) = ${p.edgeScale.toFixed(2)}
+        _EdgeAmount ("Edge Amount", Float) = ${p.edgeAmount.toFixed(3)}
+        _IriIntensity ("Iri Intensity", Range(0, 2)) = ${(p.iriIntensity||0).toFixed(2)}
+        _IriShift ("Iri Shift", Range(0, 5)) = ${(p.iriShift||1).toFixed(2)}
+        _EmissIntensity ("Emiss Intensity", Range(0, 3)) = ${(p.emissIntensity||0).toFixed(2)}
+        _EmissScale ("Emiss Scale", Float) = ${(p.emissScale||3).toFixed(2)}
+        _EmissThresh ("Emiss Thresh", Range(0, 1)) = ${(p.emissThresh||0.6).toFixed(2)}
+        _EmissColor ("Emiss Color", Color) = (${c('emissColor').join(', ')}, 1)
     }
     SubShader
     {
@@ -7642,7 +7675,9 @@ const code=`Shader "Custom/CelShadeEditorPRO"
         float _UpBias, _StretchY, _GlowBase, _GlowCore, _ShadingSoft;
         float _Thresh1, _Thresh2, _Thresh3, _Thresh4;
         float _RimIntensity, _RimPower, _SSSIntensity, _SSSPower;
-        fixed4 _Col1, _Col2, _Col3, _Col4, _Col5, _RimColor, _SSSColor;
+        float _EdgeScale, _EdgeAmount, _IriIntensity, _IriShift;
+        float _EmissIntensity, _EmissScale, _EmissThresh;
+        fixed4 _Col1, _Col2, _Col3, _Col4, _Col5, _RimColor, _SSSColor, _EmissColor;
 
         struct Input { float3 worldPos; float3 worldNormal; float vDist; float3 vPos; };
 
@@ -7670,7 +7705,8 @@ const code=`Shader "Custom/CelShadeEditorPRO"
 
         void surf(Input IN, inout SurfaceOutput o) {
             float t = saturate((IN.vDist - ${p.distMin.toFixed(2)}) / ${p.distRange.toFixed(2)});
-            float tv = t;
+            float edgeN = snoise(IN.vPos * _EdgeScale) * _EdgeAmount;
+            float tv = t + edgeN;
             float3 col = _Col1.rgb;
             col = lerp(col, _Col2.rgb, bandEdge(_Thresh1, tv));
             col = lerp(col, _Col3.rgb, bandEdge(_Thresh2, tv));
@@ -7681,6 +7717,17 @@ const code=`Shader "Custom/CelShadeEditorPRO"
             float NdotV = max(dot(normalize(IN.worldNormal), viewDir), 0.0);
             col += _RimColor.rgb * pow(1.0 - NdotV, _RimPower) * _RimIntensity;
             col += _SSSColor.rgb * pow(1.0 - NdotV, _SSSPower) * (1.0 - t) * _SSSIntensity;
+            if (_IriIntensity > 0.001) {
+                float fresnel = 1.0 - NdotV;
+                float hue = fresnel * _IriShift * 6.2832;
+                float3 iri = float3(0.5+0.5*cos(hue), 0.5+0.5*cos(hue-2.094), 0.5+0.5*cos(hue+2.094));
+                col = lerp(col, col * iri * 2.0, fresnel * _IriIntensity);
+            }
+            if (_EmissIntensity > 0.001) {
+                float en = snoise(IN.vPos * _EmissScale + float3(_Time.y*0.3,0,0));
+                float emask = smoothstep(_EmissThresh-0.05, _EmissThresh+0.05, en);
+                col += _EmissColor.rgb * emask * _EmissIntensity;
+            }
             o.Albedo = col;
             o.Alpha = 1;
         }
