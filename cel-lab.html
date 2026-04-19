@@ -7586,7 +7586,103 @@ downloadText(code,exportPrefix()+'-material.gdshader');
     .replace(/glow_base[^;]*= [^;]+;/,`glow_base = ${lp.glowBase.toFixed(2)};`)
     .replace(/glow_core[^;]*= [^;]+;/,`glow_core = ${lp.glowCore.toFixed(2)};`);
   downloadText(lCode,exportPrefix()+'-'+name+'.gdshader');
-});}
+});
+if(p.showLightning){downloadText(`# Cel-Lab Lightning System — GDScript
+# Attach to a Node3D. Generates procedural lightning arcs.
+# Uses ImmediateMesh for ribbon rendering.
+
+extends Node3D
+
+@export var arc_count := ${p.arcCount}
+@export var arc_width := ${p.arcWidth}
+@export var arc_noise := ${p.arcNoise}
+@export var arc_speed := ${p.arcSpeed}
+@export var arc_branch := ${p.arcBranch}
+@export var arc_spread := ${p.arcSpread}
+@export var color := Color(1.0, 0.8, 0.4)
+
+var _mesh: ImmediateMesh
+var _mat: StandardMaterial3D
+var _timer := 0.0
+
+func _ready():
+\t_mesh = ImmediateMesh.new()
+\t_mat = StandardMaterial3D.new()
+\t_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+\t_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+\t_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+\t_mat.vertex_color_use_as_albedo = true
+\tvar mi = MeshInstance3D.new()
+\tmi.mesh = _mesh
+\tmi.material_override = _mat
+\tadd_child(mi)
+\t_regenerate()
+
+func _process(delta):
+\t_timer += delta
+\tif _timer > 1.0 / max(arc_speed, 0.5):
+\t\t_timer = 0.0
+\t\t_regenerate()
+
+func _midpoint_displace(start: Vector3, end: Vector3, iterations: int, roughness: float) -> Array[Vector3]:
+\tvar pts: Array[Vector3] = [start, end]
+\tvar ofs = roughness
+\tfor i in iterations:
+\t\tvar np: Array[Vector3] = [pts[0]]
+\t\tfor j in range(pts.size() - 1):
+\t\t\tvar a = pts[j]
+\t\t\tvar b = pts[j+1]
+\t\t\tvar mid = (a + b) / 2.0 + Vector3(randf_range(-ofs,ofs), randf_range(-ofs,ofs), randf_range(-ofs,ofs))
+\t\t\tnp.append(mid)
+\t\t\tnp.append(b)
+\t\tpts = np
+\t\tofs *= 0.5
+\treturn pts
+
+func _regenerate():
+\t_mesh.clear_surfaces()
+\t_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+\tfor a in range(arc_count):
+\t\tvar ang1 = float(a) / arc_count * TAU * arc_spread + randf() * 0.3
+\t\tvar ang2 = ang1 + 0.5 + randf() * arc_spread
+\t\tvar r = 1.05
+\t\tvar start = Vector3(cos(ang1)*r, randf_range(-0.5,0.5)*r, sin(ang1)*r)
+\t\tvar end_ = Vector3(cos(ang2)*r, randf_range(-0.5,0.5)*r, sin(ang2)*r)
+\t\tvar pts = _midpoint_displace(start, end_, 5, arc_noise)
+\t\t_draw_ribbon(pts, arc_width)
+\t\tfor b in range(3):
+\t\t\tif randf() > arc_branch:
+\t\t\t\tcontinue
+\t\t\tvar si = randi_range(int(pts.size()*0.15), int(pts.size()*0.85))
+\t\t\tvar sp = pts[si]
+\t\t\tvar be = sp + Vector3(randf_range(-1,1), randf_range(-1,1), randf_range(-1,1)) * arc_noise * 2.0
+\t\t\tvar bpts = _midpoint_displace(sp, be, 3, arc_noise * 0.6)
+\t\t\t_draw_ribbon(bpts, arc_width * 0.4)
+\t_mesh.surface_end()
+
+func _draw_ribbon(pts: Array[Vector3], width: float):
+\tfor i in range(pts.size() - 1):
+\t\tvar a = pts[i]
+\t\tvar b = pts[i+1]
+\t\tvar tang = (b - a).normalized()
+\t\tvar norm = tang.cross(Vector3.UP).normalized()
+\t\tif norm.length() < 0.01:
+\t\t\tnorm = tang.cross(Vector3.RIGHT).normalized()
+\t\tvar t = float(i) / (pts.size() - 1)
+\t\tvar w = width * (1.0 - pow(2.0 * abs(t - 0.5), 2.0))
+\t\tvar al = a - norm * w
+\t\tvar ar_ = a + norm * w
+\t\tvar bl = b - norm * w
+\t\tvar br_ = b + norm * w
+\t\t_mesh.surface_set_color(color)
+\t\t_mesh.surface_add_vertex(al)
+\t\t_mesh.surface_add_vertex(bl)
+\t\t_mesh.surface_add_vertex(ar_)
+\t\t_mesh.surface_add_vertex(ar_)
+\t\t_mesh.surface_add_vertex(bl)
+\t\t_mesh.surface_add_vertex(br_)
+`,exportPrefix()+'-lightning.gd');}
+}
 
 /** Export post-processing as Godot canvas_item shader */
 function exportGodotPostFX(){const p=P;const c=k=>{const v=hexToV(p[k]||'#000000');return v.map(x=>x.toFixed(3));};
@@ -7920,7 +8016,55 @@ downloadText(code,exportPrefix()+'.shader');
     .replace(/_GlowBase \("Glow Base"[^)]+\) = [^\n]+/,`_GlowBase ("Glow Base", Range(0, 5)) = ${lp.glowBase.toFixed(2)}`)
     .replace(/_GlowCore \("Glow Core"[^)]+\) = [^\n]+/,`_GlowCore ("Glow Core", Range(0, 4)) = ${lp.glowCore.toFixed(2)}`);
   downloadText(lCode,exportPrefix()+'-'+name+'.shader');
-});}
+});
+if(p.showLightning){downloadText(`using UnityEngine;
+// Cel-Lab Lightning System — Attach to empty GameObject
+// Generates procedural lightning arcs using midpoint displacement
+[RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
+public class CelLabLightning : MonoBehaviour {
+    public int arcCount = ${p.arcCount};
+    public float arcWidth = ${p.arcWidth}f;
+    public float arcNoise = ${p.arcNoise}f;
+    public float arcSpeed = ${p.arcSpeed}f;
+    public float arcBranch = ${p.arcBranch}f;
+    public float arcSpread = ${p.arcSpread}f;
+    public Color color = new Color(1f, 0.8f, 0.4f, 1f);
+    Mesh _mesh; float _timer;
+    void Start() { _mesh = new Mesh(); GetComponent<MeshFilter>().mesh = _mesh;
+        var mat = new Material(Shader.Find("Particles/Standard Unlit"));
+        mat.SetColor("_Color", color); mat.SetFloat("_Mode", 1);
+        GetComponent<MeshRenderer>().material = mat; Regenerate(); }
+    void Update() { _timer += Time.deltaTime;
+        if (_timer > 1f / Mathf.Max(arcSpeed, 0.5f)) { _timer = 0; Regenerate(); } }
+    Vector3[] MidpointDisplace(Vector3 a, Vector3 b, int iter, float rough) {
+        var pts = new System.Collections.Generic.List<Vector3>{a, b}; float ofs = rough;
+        for (int i = 0; i < iter; i++) { var np = new System.Collections.Generic.List<Vector3>{pts[0]};
+            for (int j = 0; j < pts.Count-1; j++) { var mid = (pts[j]+pts[j+1])/2f +
+                new Vector3(Random.Range(-ofs,ofs),Random.Range(-ofs,ofs),Random.Range(-ofs,ofs));
+                np.Add(mid); np.Add(pts[j+1]); } pts = np; ofs *= 0.5f; } return pts.ToArray(); }
+    void Regenerate() { var verts = new System.Collections.Generic.List<Vector3>();
+        var tris = new System.Collections.Generic.List<int>();
+        for (int a = 0; a < arcCount; a++) { float ang1 = (float)a/arcCount*Mathf.PI*2*arcSpread+Random.value*0.3f;
+            float ang2 = ang1+0.5f+Random.value*arcSpread; float r = 1.05f;
+            var s = new Vector3(Mathf.Cos(ang1)*r, Random.Range(-0.5f,0.5f)*r, Mathf.Sin(ang1)*r);
+            var e = new Vector3(Mathf.Cos(ang2)*r, Random.Range(-0.5f,0.5f)*r, Mathf.Sin(ang2)*r);
+            AddRibbon(MidpointDisplace(s,e,5,arcNoise), arcWidth, verts, tris);
+            for (int b = 0; b < 3; b++) { if (Random.value > arcBranch) continue;
+                var pts2 = MidpointDisplace(s,e,5,arcNoise); int si = Random.Range(pts2.Length/5, pts2.Length*4/5);
+                var sp = pts2[si]; var be = sp + new Vector3(Random.Range(-1f,1f),Random.Range(-1f,1f),Random.Range(-1f,1f))*arcNoise*2;
+                AddRibbon(MidpointDisplace(sp,be,3,arcNoise*0.6f), arcWidth*0.4f, verts, tris); } }
+        _mesh.Clear(); _mesh.vertices = verts.ToArray(); _mesh.triangles = tris.ToArray(); }
+    void AddRibbon(Vector3[] pts, float w, System.Collections.Generic.List<Vector3> v, System.Collections.Generic.List<int> t) {
+        for (int i = 0; i < pts.Length-1; i++) { var tang = (pts[i+1]-pts[i]).normalized;
+            var norm = Vector3.Cross(tang, Vector3.up).normalized;
+            if (norm.magnitude < 0.01f) norm = Vector3.Cross(tang, Vector3.right).normalized;
+            float frac = (float)i/(pts.Length-1); float ww = w*(1-Mathf.Pow(2*Mathf.Abs(frac-0.5f),2));
+            int bi = v.Count;
+            v.Add(pts[i]-norm*ww); v.Add(pts[i+1]-norm*ww); v.Add(pts[i]+norm*ww); v.Add(pts[i+1]+norm*ww);
+            t.Add(bi);t.Add(bi+1);t.Add(bi+2); t.Add(bi+2);t.Add(bi+1);t.Add(bi+3); } }
+}
+`,exportPrefix()+'-lightning.cs');}
+}
 
 // ════════════════════════════════════════════════════════════
 //  BACKGROUND MODE SHADER EXPORTS
@@ -10132,6 +10276,130 @@ export function updateParticles(uniforms, time) {
   if (uniforms && uniforms.uTime) {
     uniforms.uTime.value = time;
   }
+}
+`:''}${p.showLightning?`
+// ═══════════════════════════════════════════════════════
+// Lightning System
+// ═══════════════════════════════════════════════════════
+
+function midpointDisplace(start, end, iterations, roughness) {
+  let pts = [{...start}, {...end}];
+  let offset = roughness;
+  for (let i = 0; i < iterations; i++) {
+    const np = [pts[0]];
+    for (let j = 0; j < pts.length - 1; j++) {
+      const a = pts[j], b = pts[j+1];
+      const mid = {x:(a.x+b.x)/2+(Math.random()-.5)*offset, y:(a.y+b.y)/2+(Math.random()-.5)*offset, z:(a.z+b.z)/2+(Math.random()-.5)*offset};
+      np.push(mid, b);
+    }
+    pts = np; offset *= 0.5;
+  }
+  return pts;
+}
+
+function writeBoltRibbon(posArr, offset, pts, width) {
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i+1];
+    const tx = b.x-a.x, ty = b.y-a.y, tz = b.z-a.z;
+    let nx = -tz, ny = 0, nz = tx;
+    let nl = Math.sqrt(nx*nx+ny*ny+nz*nz) || 0.001;
+    nx/=nl; ny/=nl; nz/=nl;
+    const t = i/(pts.length-1);
+    const w = width * (1-Math.pow(2*Math.abs(t-0.5),2));
+    const vi = offset*3;
+    posArr[vi]=a.x-nx*w;posArr[vi+1]=a.y-ny*w;posArr[vi+2]=a.z-nz*w;
+    posArr[vi+3]=b.x-nx*w;posArr[vi+4]=b.y-ny*w;posArr[vi+5]=b.z-nz*w;
+    posArr[vi+6]=a.x+nx*w;posArr[vi+7]=a.y+ny*w;posArr[vi+8]=a.z+nz*w;
+    posArr[vi+9]=a.x+nx*w;posArr[vi+10]=a.y+ny*w;posArr[vi+11]=a.z+nz*w;
+    posArr[vi+12]=b.x-nx*w;posArr[vi+13]=b.y-ny*w;posArr[vi+14]=b.z-nz*w;
+    posArr[vi+15]=b.x+nx*w;posArr[vi+16]=b.y+ny*w;posArr[vi+17]=b.z+nz*w;
+    offset += 6;
+  }
+  return offset;
+}
+
+/**
+ * createLightningSystem(overrides) — returns { mesh, regenerate, uniforms }
+ * Call regenerate() periodically for flicker effect.
+ */
+export function createLightningSystem(overrides = {}) {
+  const params = {
+    arcCount: ${p.arcCount}, arcWidth: ${p.arcWidth}, arcNoise: ${p.arcNoise},
+    arcSpeed: ${p.arcSpeed}, arcBranch: ${p.arcBranch}, arcSpread: ${p.arcSpread},
+    ...overrides
+  };
+  const SEGS = 32, MAX_ARCS = 8, BRANCHES = 3, BSEGS = 8;
+  const totalSegs = MAX_ARCS * (SEGS + BRANCHES * BSEGS);
+  const totalVerts = totalSegs * 6;
+  const pos = new Float32Array(totalVerts * 3);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+
+  const vs = 'varying float vT;void main(){vT=position.y;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}';
+  const fs = \`precision highp float;varying float vT;
+uniform vec3 uCol1,uCol2;uniform float uGlowBase,uTime;
+void main(){
+  vec3 col=mix(uCol1*1.5,uCol2,0.3);col*=uGlowBase;
+  float alpha=0.8+0.2*sin(vT*30.+uTime*20.);
+  gl_FragColor=vec4(col,alpha);
+}\`;
+  const uniforms = {
+    uCol1: { value: hexToVec3(params.col1 || '${p.col1}') },
+    uCol2: { value: hexToVec3(params.col2 || '${p.col2}') },
+    uGlowBase: { value: params.glowBase || ${p.glowBase} },
+    uTime: { value: 0 }
+  };
+  const mat = new THREE.ShaderMaterial({vertexShader:vs, fragmentShader:fs, uniforms,
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide});
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+
+  function regenerate() {
+    const pp = params, count = Math.min(Math.round(pp.arcCount), MAX_ARCS);
+    let vi = 0;
+    for (let a = 0; a < count; a++) {
+      const ang1 = (a/count)*Math.PI*2*pp.arcSpread+Math.random()*0.3;
+      const ang2 = ang1+0.5+Math.random()*pp.arcSpread;
+      const r = 1.05;
+      const start = {x:Math.cos(ang1)*r, y:(Math.random()-.5)*r, z:Math.sin(ang1)*r};
+      const end = {x:Math.cos(ang2)*r, y:(Math.random()-.5)*r, z:Math.sin(ang2)*r};
+      const pts = midpointDisplace(start, end, 5, pp.arcNoise);
+      const resampled = [];
+      for (let i=0;i<=SEGS;i++){const f=i/SEGS*(pts.length-1);const idx=Math.floor(f),frac=f-idx;
+        const p0=pts[Math.min(idx,pts.length-1)],p1=pts[Math.min(idx+1,pts.length-1)];
+        resampled.push({x:p0.x+(p1.x-p0.x)*frac,y:p0.y+(p1.y-p0.y)*frac,z:p0.z+(p1.z-p0.z)*frac});}
+      vi = writeBoltRibbon(pos, vi, resampled, pp.arcWidth);
+      for (let b = 0; b < BRANCHES; b++) {
+        if (Math.random() > pp.arcBranch) { for(let s=0;s<BSEGS*6;s++){pos[(vi+s)*3]=0;pos[(vi+s)*3+1]=0;pos[(vi+s)*3+2]=0;} vi+=BSEGS*6; continue; }
+        const si = Math.floor(Math.random()*resampled.length*0.7)+Math.floor(resampled.length*0.15);
+        const sp = resampled[si];
+        const bEnd = {x:sp.x+(Math.random()-.5)*pp.arcNoise*2,y:sp.y+(Math.random()-.5)*pp.arcNoise*2,z:sp.z+(Math.random()-.5)*pp.arcNoise*2};
+        const bPts = midpointDisplace(sp, bEnd, 3, pp.arcNoise*0.6);
+        const bRes = [];
+        for(let i=0;i<=BSEGS;i++){const f=i/BSEGS*(bPts.length-1);const idx=Math.floor(f),frac=f-idx;
+          const p0=bPts[Math.min(idx,bPts.length-1)],p1=bPts[Math.min(idx+1,bPts.length-1)];
+          bRes.push({x:p0.x+(p1.x-p0.x)*frac,y:p0.y+(p1.y-p0.y)*frac,z:p0.z+(p1.z-p0.z)*frac});}
+        vi = writeBoltRibbon(pos, vi, bRes, pp.arcWidth*0.4);
+      }
+    }
+    for(let i=vi*3;i<pos.length;i++)pos[i]=0;
+    geo.attributes.position.needsUpdate = true;
+    geo.setDrawRange(0, vi);
+  }
+
+  regenerate();
+  return { mesh, regenerate, uniforms };
+}
+
+/**
+ * updateLightning(system, time) — call in animate loop
+ * Handles flicker timing and time uniform.
+ */
+let _lnLastT = 0;
+export function updateLightning(system, time) {
+  system.uniforms.uTime.value = time;
+  const interval = 1 / Math.max(${p.arcSpeed}, 0.5);
+  if (time - _lnLastT > interval) { _lnLastT = time; system.regenerate(); }
 }
 `:''}`;
   downloadText(code, exportPrefix()+'-material.js');
