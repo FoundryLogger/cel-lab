@@ -4356,7 +4356,7 @@ const SECTION_PARAMS={
   'emit-params':['glowBase','glowCore','rimIntensity','rimPower','iriIntensity','iriShift','emissIntensity','emissScale','emissThresh','sssIntensity','sssPower'],
   'post-params':['bloomIntensity','bloomThreshold','chromaAb','vignette','contrast','saturation','ppGrain','ppSharpen','ppLensDist','ppScanlines'],
   'part-params':['partCount','partSize','partSpeed','partSpread','partHeight','partTurb','partTurbScale','partGravity','partSizeEnd','partTrail'],
-  'lightning-params':['arcCount','arcWidth','arcNoise','arcSpeed','arcBranch','arcSpread']
+  'lightning-params':['arcCount','arcWidth','arcNoise','arcSpeed','arcBranch','arcSpread','arcGlow','arcIntensity','arcCurve']
 };
 const ORBIT_SENSITIVITY   = 0.005;
 const SCENE_BG            = 0x050508;
@@ -4462,7 +4462,7 @@ const DEFAULTS={
   glowBase:1.20,glowCore:0.50,rimIntensity:0.0,rimPower:2.0,rimColor:'#ffffff',
   partCount:40,partSize:0.15,partSpeed:1.5,partSpread:0.6,partLife:1.5,partHeight:2.5,
   partFlicker:0.3,partCurl:0.5,partChaos:1.0,partStretch:1.0,partTurb:0.0,partTurbScale:3.0,partEmitShape:0,partEmitRadius:0.5,partGravity:0,partSizeEnd:0.1,partTrail:0.0,
-  showLightning:false,arcCount:3,arcWidth:0.04,arcNoise:0.4,arcSpeed:6.0,arcBranch:0.3,arcSpread:1.0,
+  showLightning:false,arcCount:3,arcWidth:0.06,arcNoise:0.4,arcSpeed:6.0,arcBranch:0.3,arcSpread:1.0,arcGlow:1.0,arcIntensity:1.5,arcCurve:0.0,
   showSphere:true,showParticles:true,
   useRamp:false,
   chromaAb:0,vignette:0,contrast:1.0,saturation:1.0,tintColor:'#ffffff',dissolveMode:0,
@@ -4831,6 +4831,9 @@ inputs.arcNoise=addSlider(lnC,'arcNoise','Jaggedness',0,1.5,0.05);
 inputs.arcSpeed=addSlider(lnC,'arcSpeed','Flicker',0.5,15,0.5);
 inputs.arcBranch=addSlider(lnC,'arcBranch','Branching',0,1,0.05);
 inputs.arcSpread=addSlider(lnC,'arcSpread','Spread',0,3,0.1);
+inputs.arcGlow=addSlider(lnC,'arcGlow','Glow',0,3,0.05);
+inputs.arcIntensity=addSlider(lnC,'arcIntensity','Intensity',0.5,3,0.05);
+inputs.arcCurve=addSlider(lnC,'arcCurve','Curve',-2,2,0.05);
 
 // ════════════════════════════════════════════════════════════
 //  COLOR RAMP EDITOR
@@ -6392,7 +6395,7 @@ const pMesh=new THREE.Mesh(pGeo,pMat);scene.add(pMesh);
 // ════════════════════════════════════════════════════════════
 //  LIGHTNING SYSTEM — CPU midpoint displacement + GPU ribbon
 // ════════════════════════════════════════════════════════════
-const LN_SEGS=32,LN_MAX_ARCS=8,LN_BRANCHES=3,LN_BSEGS=8;
+const LN_SEGS=48,LN_MAX_ARCS=8,LN_BRANCHES=5,LN_BSEGS=12;
 const LN_PTS=LN_SEGS+1,LN_BPTS=LN_BSEGS+1;
 const LN_TOTAL_SEGS=LN_MAX_ARCS*(LN_SEGS+LN_BRANCHES*LN_BSEGS);
 const LN_TOTAL_VERTS=LN_TOTAL_SEGS*6;
@@ -6490,6 +6493,23 @@ function regenerateLightning(){
     const start={x:Math.cos(ang1)*r,y:(Math.random()-0.5)*r,z:Math.sin(ang1)*r};
     const end={x:Math.cos(ang2)*r,y:(Math.random()-0.5)*r,z:Math.sin(ang2)*r};
     const pts=midpointDisplace(start,end,5,P.arcNoise);
+    // Apply curve: bend all points along perpendicular arc
+    if(Math.abs(P.arcCurve)>0.01){
+      const mx=(start.x+end.x)/2,my=(start.y+end.y)/2,mz=(start.z+end.z)/2;
+      const dx=end.x-start.x,dy=end.y-start.y,dz=end.z-start.z;
+      // Perpendicular direction (cross with up, fallback)
+      let px=-dz,py=0,pz=dx;
+      let pl=Math.sqrt(px*px+py*py+pz*pz)||1;px/=pl;py/=pl;pz/=pl;
+      // Also add vertical bend
+      const vy=1;
+      for(let i=0;i<pts.length;i++){
+        const t=i/(pts.length-1);
+        const bend=4*t*(1-t)*P.arcCurve;// quadratic peak at center
+        pts[i].x+=px*bend*0.3;
+        pts[i].y+=vy*bend*0.5;
+        pts[i].z+=pz*bend*0.3;
+      }
+    }
     // Resample to LN_SEGS points
     const resampled=[];
     for(let i=0;i<=LN_SEGS;i++){
@@ -6498,18 +6518,32 @@ function regenerateLightning(){
       const p0=pts[Math.min(idx,pts.length-1)],p1=pts[Math.min(idx+1,pts.length-1)];
       resampled.push({x:p0.x+(p1.x-p0.x)*frac,y:p0.y+(p1.y-p0.y)*frac,z:p0.z+(p1.z-p0.z)*frac});
     }
-    vi=writeBoltToBuffer(pos,vi,resampled,P.arcWidth);
+    const glowW=P.arcWidth*(1+P.arcGlow*0.5);
+    vi=writeBoltToBuffer(pos,vi,resampled,glowW);
     // Branches
     for(let b=0;b<LN_BRANCHES;b++){
       if(Math.random()>P.arcBranch){
-        // Empty branch — write degenerate triangles
         for(let s=0;s<LN_BSEGS*6;s++){pos[(vi+s)*3]=0;pos[(vi+s)*3+1]=0;pos[(vi+s)*3+2]=0;}
         vi+=LN_BSEGS*6;continue;
       }
       const splitIdx=Math.floor(Math.random()*resampled.length*0.7)+Math.floor(resampled.length*0.15);
       const sp=resampled[splitIdx];
-      const bEnd={x:sp.x+(Math.random()-0.5)*P.arcNoise*2,y:sp.y+(Math.random()-0.5)*P.arcNoise*2,z:sp.z+(Math.random()-0.5)*P.arcNoise*2};
-      const bPts=midpointDisplace(sp,bEnd,3,P.arcNoise*0.6);
+      // Branch with natural bending: waypoint forces direction change
+      const outDir={x:sp.x,y:sp.y,z:sp.z};
+      const ol=Math.sqrt(outDir.x*outDir.x+outDir.y*outDir.y+outDir.z*outDir.z)||1;
+      const bLen=P.arcNoise*1.2+Math.random()*P.arcNoise*0.8;
+      // First segment: outward
+      const mid={x:sp.x+outDir.x/ol*bLen*0.5+(Math.random()-0.5)*P.arcNoise*0.5,
+                 y:sp.y+outDir.y/ol*bLen*0.5+(Math.random()-0.5)*P.arcNoise*0.8,
+                 z:sp.z+outDir.z/ol*bLen*0.5+(Math.random()-0.5)*P.arcNoise*0.5};
+      // Second segment: deviate direction sharply
+      const bEnd={x:mid.x+(Math.random()-0.5)*bLen*0.8,
+                  y:mid.y+(Math.random()-0.5)*bLen*0.8,
+                  z:mid.z+(Math.random()-0.5)*bLen*0.8};
+      // Generate with waypoint: split→mid then mid→end, concatenate
+      const seg1=midpointDisplace(sp,mid,3,P.arcNoise*0.4);
+      const seg2=midpointDisplace(mid,bEnd,3,P.arcNoise*0.4);
+      const bPts=seg1.concat(seg2.slice(1));
       const bResampled=[];
       for(let i=0;i<=LN_BSEGS;i++){
         const f=i/LN_BSEGS*(bPts.length-1);
@@ -6517,7 +6551,7 @@ function regenerateLightning(){
         const p0=bPts[Math.min(idx,bPts.length-1)],p1=bPts[Math.min(idx+1,bPts.length-1)];
         bResampled.push({x:p0.x+(p1.x-p0.x)*frac,y:p0.y+(p1.y-p0.y)*frac,z:p0.z+(p1.z-p0.z)*frac});
       }
-      vi=writeBoltToBuffer(pos,vi,bResampled,P.arcWidth*0.4);
+      vi=writeBoltToBuffer(pos,vi,bResampled,glowW*0.35);
     }
   }
   // Zero remaining
@@ -6530,17 +6564,30 @@ const lnGeo=buildLnGeo();
 const lnVS=`attribute float aSide,aT;varying float vSide,vT;
 void main(){vSide=aSide;vT=aT;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
 const lnFS=`precision highp float;varying float vSide,vT;
-uniform vec3 uCol1,uCol2,uCol3;uniform float uGlowBase,uTime;
+uniform vec3 uCol1,uCol2,uCol3,uCol4,uCol5;uniform float uGlowBase,uTime,uArcGlow,uArcIntensity;
 void main(){
-  float d=abs(vSide);float core=exp(-d*d*8.);float glow=exp(-d*d*2.);
-  float energy=mix(glow,core,0.6);
-  vec3 col=mix(uCol1*1.5,uCol2,d*0.8);col=mix(col,uCol3,smoothstep(0.3,0.8,d));
-  col+=vec3(1.,.9,.8)*core*0.5;col*=uGlowBase;
-  float alpha=energy*(1.-.7*pow(abs(vT*2.-1.),2.));
-  alpha*=0.8+0.2*sin(vT*30.+uTime*20.);
-  gl_FragColor=vec4(col,alpha);
+  float d=abs(vSide);
+  // Multi-layer glow: hot white core → colored mid → soft outer
+  float core=exp(-d*d*50.)*1.2;
+  float mid=exp(-d*d*12.);
+  float outer=exp(-d*d*2.)*uArcGlow;
+  float wisp=exp(-d*1.5)*(0.5+0.5*sin(vT*40.+uTime*25.))*0.3;
+  // Color layers: core=white hot, mid=col1-col2, outer=col3-col5
+  vec3 coreCol=vec3(1.,0.95,0.9)*core*uArcIntensity;
+  vec3 midCol=mix(uCol1*1.3,uCol2,d*2.)*mid;
+  vec3 outerCol=mix(uCol2,uCol3,smoothstep(0.2,0.6,d))*outer;
+  vec3 wispCol=mix(uCol3,uCol4,d)*wisp;
+  vec3 col=(coreCol+midCol+outerCol+wispCol)*uGlowBase;
+  // Edge shimmer
+  col+=uCol5*0.15*sin(vT*60.+uTime*30.+d*10.)*outer;
+  // Taper at bolt endpoints
+  float taper=1.-.7*pow(abs(vT*2.-1.),2.);
+  float alpha=(core+mid+outer*0.7+wisp)*taper;
+  // Flicker micro-variation
+  alpha*=0.85+0.15*sin(vT*25.+uTime*18.)*sin(uTime*7.+vT*50.);
+  gl_FragColor=vec4(col,clamp(alpha,0.,1.));
 }`;
-const lnMat=new THREE.ShaderMaterial({vertexShader:lnVS,fragmentShader:lnFS,uniforms:{uCol1:U.uCol1,uCol2:U.uCol2,uCol3:U.uCol3,uGlowBase:U.uGlowBase,uTime:{value:0}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
+const lnMat=new THREE.ShaderMaterial({vertexShader:lnVS,fragmentShader:lnFS,uniforms:{uCol1:U.uCol1,uCol2:U.uCol2,uCol3:U.uCol3,uCol4:U.uCol4,uCol5:U.uCol5,uGlowBase:U.uGlowBase,uTime:{value:0},uArcGlow:{value:P.arcGlow},uArcIntensity:{value:P.arcIntensity}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
 const lnMesh=new THREE.Mesh(lnGeo,lnMat);lnMesh.visible=false;lnMesh.frustumCulled=false;scene.add(lnMesh);
 let lnLastFlick=0;
 
@@ -6819,6 +6866,7 @@ compositeMat.uniforms.uHazeIntensity.value=P.hazeIntensity;compositeMat.uniforms
   pU.uPartTrail.value     = P.partTrail || 0;
 pGeo.setDrawRange(0,Math.max(0,Math.round(P.partCount))*6);sphereMesh.visible=renderMode==='mesh'&&P.showSphere;pMesh.visible=renderMode==='mesh'&&P.showParticles;
 lnMesh.visible=renderMode==='mesh'&&P.showLightning;
+lnMat.uniforms.uArcGlow.value=P.arcGlow;lnMat.uniforms.uArcIntensity.value=P.arcIntensity;
 document.getElementById('toggleLn').textContent=P.showLightning?'✓':'✗';
 document.getElementById('toggleLn').className='toggle'+(P.showLightning?'':' off');
 // Layer 2
@@ -7599,6 +7647,9 @@ extends Node3D
 @export var arc_speed := ${p.arcSpeed}
 @export var arc_branch := ${p.arcBranch}
 @export var arc_spread := ${p.arcSpread}
+@export var arc_glow := ${p.arcGlow}
+@export var arc_intensity := ${p.arcIntensity}
+@export var arc_curve := ${p.arcCurve}
 @export var color := Color(1.0, 0.8, 0.4)
 
 var _mesh: ImmediateMesh
@@ -8028,6 +8079,9 @@ public class CelLabLightning : MonoBehaviour {
     public float arcSpeed = ${p.arcSpeed}f;
     public float arcBranch = ${p.arcBranch}f;
     public float arcSpread = ${p.arcSpread}f;
+    public float arcGlow = ${p.arcGlow}f;
+    public float arcIntensity = ${p.arcIntensity}f;
+    public float arcCurve = ${p.arcCurve}f;
     public Color color = new Color(1f, 0.8f, 0.4f, 1f);
     Mesh _mesh; float _timer;
     void Start() { _mesh = new Mesh(); GetComponent<MeshFilter>().mesh = _mesh;
@@ -10326,6 +10380,7 @@ export function createLightningSystem(overrides = {}) {
   const params = {
     arcCount: ${p.arcCount}, arcWidth: ${p.arcWidth}, arcNoise: ${p.arcNoise},
     arcSpeed: ${p.arcSpeed}, arcBranch: ${p.arcBranch}, arcSpread: ${p.arcSpread},
+    arcGlow: ${p.arcGlow}, arcIntensity: ${p.arcIntensity}, arcCurve: ${p.arcCurve},
     ...overrides
   };
   const SEGS = 32, MAX_ARCS = 8, BRANCHES = 3, BSEGS = 8;
