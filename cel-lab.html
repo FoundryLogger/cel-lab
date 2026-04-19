@@ -563,6 +563,7 @@ body{background:var(--bg);overflow:hidden;display:flex;font-family:'SF Mono','Ca
     <!-- TAB 2: PARTICLES -->
     <div class="tab-page" id="page2">
       <div class="section"><div class="section-head"><span class="arrow">▼</span><span class="title blue">Particles</span><div class="toggle" id="toggleB" onclick="event.stopPropagation();toggleParticles()">✓</div></div><div class="section-body" id="part-params"></div></div>
+      <div class="section"><div class="section-head" onclick="togSec(this)"><span class="arrow collapsed">▼</span><span class="title blue">Lightning</span><div class="toggle off" id="toggleLn" onclick="event.stopPropagation();toggleLightning()">✗</div></div><div class="section-body collapsed" id="lightning-params"></div></div>
       <div class="section"><div class="section-head"><span class="arrow">▼</span><span class="title">Sphere Visibility</span><div class="toggle" id="toggleA" onclick="event.stopPropagation();toggleSphere()">✓</div></div><div class="section-body" style="padding:4px 10px"><span style="font-size:10px;color:var(--dim)">Toggle the main mesh on/off</span></div></div>
     </div>
     <!-- TAB 3: EXPORT -->
@@ -4354,7 +4355,8 @@ const SECTION_PARAMS={
   'edge-params':['edgeScale','edgeAmount','edgeDetail','overlayScale','overlayMix'],
   'emit-params':['glowBase','glowCore','rimIntensity','rimPower','iriIntensity','iriShift','emissIntensity','emissScale','emissThresh','sssIntensity','sssPower'],
   'post-params':['bloomIntensity','bloomThreshold','chromaAb','vignette','contrast','saturation','ppGrain','ppSharpen','ppLensDist','ppScanlines'],
-  'part-params':['partCount','partSize','partSpeed','partSpread','partHeight','partTurb','partTurbScale','partGravity','partSizeEnd','partTrail']
+  'part-params':['partCount','partSize','partSpeed','partSpread','partHeight','partTurb','partTurbScale','partGravity','partSizeEnd','partTrail'],
+  'lightning-params':['arcCount','arcWidth','arcNoise','arcSpeed','arcBranch','arcSpread']
 };
 const ORBIT_SENSITIVITY   = 0.005;
 const SCENE_BG            = 0x050508;
@@ -4460,6 +4462,7 @@ const DEFAULTS={
   glowBase:1.20,glowCore:0.50,rimIntensity:0.0,rimPower:2.0,rimColor:'#ffffff',
   partCount:40,partSize:0.15,partSpeed:1.5,partSpread:0.6,partLife:1.5,partHeight:2.5,
   partFlicker:0.3,partCurl:0.5,partChaos:1.0,partStretch:1.0,partTurb:0.0,partTurbScale:3.0,partEmitShape:0,partEmitRadius:0.5,partGravity:0,partSizeEnd:0.1,partTrail:0.0,
+  showLightning:false,arcCount:3,arcWidth:0.04,arcNoise:0.4,arcSpeed:6.0,arcBranch:0.3,arcSpread:1.0,
   showSphere:true,showParticles:true,
   useRamp:false,
   chromaAb:0,vignette:0,contrast:1.0,saturation:1.0,tintColor:'#ffffff',dissolveMode:0,
@@ -4821,7 +4824,13 @@ inputs.partSizeEnd=addSlider(pC,'partSizeEnd','Size End',0,1,0.01);
 inputs.partTrail=addSlider(pC,'partTrail','Trail',0,1,0.05);
 inputs.partEmitShape=addSelect(pC,'partEmitShape','Emit Shape',['Point','Ring','Sphere','Cone']);
 inputs.partEmitRadius=addSlider(pC,'partEmitRadius','Emit Radius',0,3,0.05);
-
+const lnC=document.getElementById('lightning-params');
+inputs.arcCount=addSlider(lnC,'arcCount','Arcs',1,8,1);
+inputs.arcWidth=addSlider(lnC,'arcWidth','Width',0.005,0.15,0.005);
+inputs.arcNoise=addSlider(lnC,'arcNoise','Jaggedness',0,1.5,0.05);
+inputs.arcSpeed=addSlider(lnC,'arcSpeed','Flicker',0.5,15,0.5);
+inputs.arcBranch=addSlider(lnC,'arcBranch','Branching',0,1,0.05);
+inputs.arcSpread=addSlider(lnC,'arcSpread','Spread',0,3,0.1);
 
 // ════════════════════════════════════════════════════════════
 //  COLOR RAMP EDITOR
@@ -6379,6 +6388,162 @@ const pU = {
 };
 const pMat=new THREE.ShaderMaterial({vertexShader:partVS,fragmentShader:partFS,uniforms:pU,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
 const pMesh=new THREE.Mesh(pGeo,pMat);scene.add(pMesh);
+
+// ════════════════════════════════════════════════════════════
+//  LIGHTNING SYSTEM — CPU midpoint displacement + GPU ribbon
+// ════════════════════════════════════════════════════════════
+const LN_SEGS=32,LN_MAX_ARCS=8,LN_BRANCHES=3,LN_BSEGS=8;
+const LN_PTS=LN_SEGS+1,LN_BPTS=LN_BSEGS+1;
+const LN_TOTAL_SEGS=LN_MAX_ARCS*(LN_SEGS+LN_BRANCHES*LN_BSEGS);
+const LN_TOTAL_VERTS=LN_TOTAL_SEGS*6;
+
+/** Midpoint displacement: generate jagged bolt points between start and end */
+function midpointDisplace(start,end,iterations,roughness){
+  let pts=[{x:start.x,y:start.y,z:start.z},{x:end.x,y:end.y,z:end.z}];
+  let offset=roughness;
+  for(let i=0;i<iterations;i++){
+    const newPts=[pts[0]];
+    for(let j=0;j<pts.length-1;j++){
+      const a=pts[j],b=pts[j+1];
+      const mid={x:(a.x+b.x)/2+(Math.random()-.5)*offset,y:(a.y+b.y)/2+(Math.random()-.5)*offset,z:(a.z+b.z)/2+(Math.random()-.5)*offset};
+      newPts.push(mid,b);
+    }
+    pts=newPts;offset*=0.5;
+  }
+  return pts;
+}
+
+// Build ribbon geometry buffer (positions updated on CPU each flicker)
+function buildLnGeo(){
+  const v=LN_TOTAL_VERTS;
+  const pos=new Float32Array(v*3);
+  const aSide=new Float32Array(v);
+  const aT=new Float32Array(v);
+  // Pre-fill aSide and aT (fixed topology)
+  let vi=0;
+  for(let a=0;a<LN_MAX_ARCS;a++){
+    for(let s=0;s<LN_SEGS;s++){
+      const t0=s/LN_SEGS,t1=(s+1)/LN_SEGS;
+      const sides=[-1,-1,1,1,-1,1],ts=[t0,t1,t0,t0,t1,t1];
+      for(let j=0;j<6;j++){aSide[vi]=sides[j];aT[vi]=ts[j];vi++;}
+    }
+    for(let b=0;b<LN_BRANCHES;b++){
+      for(let s=0;s<LN_BSEGS;s++){
+        const t0=s/LN_BSEGS,t1=(s+1)/LN_BSEGS;
+        const sides=[-1,-1,1,1,-1,1],ts=[t0,t1,t0,t0,t1,t1];
+        for(let j=0;j<6;j++){aSide[vi]=sides[j];aT[vi]=ts[j];vi++;}
+      }
+    }
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  g.setAttribute('aSide',new THREE.BufferAttribute(aSide,1));
+  g.setAttribute('aT',new THREE.BufferAttribute(aT,1));
+  g.setDrawRange(0,0);
+  return g;
+}
+
+/** Write bolt points into position buffer as ribbon quads */
+function writeBoltToBuffer(pos,offset,pts,width){
+  for(let i=0;i<pts.length-1;i++){
+    const a=pts[i],b=pts[i+1];
+    // Tangent
+    const tx=b.x-a.x,ty=b.y-a.y,tz=b.z-a.z;
+    const tl=Math.sqrt(tx*tx+ty*ty+tz*tz)||0.001;
+    // Normal (cross tangent with up, fallback to right)
+    let nx=ty*0-tz*1,ny=tz*0-tx*0,nz=tx*1-ty*0;// cross with (0,0,1)
+    let nl=Math.sqrt(nx*nx+ny*ny+nz*nz);
+    if(nl<0.001){nx=1;ny=0;nz=0;nl=1;}
+    nx/=nl;ny/=nl;nz/=nl;
+    const t=i/(pts.length-1);
+    const taper=1-Math.pow(2*Math.abs(t-0.5),2);
+    const w=width*taper;
+    // 6 verts per segment: tri1(a-side,b-side,a+side) tri2(a+side,b-side,b+side)
+    const vi=offset*3;
+    // v0: a - normal*w
+    pos[vi]=a.x-nx*w;pos[vi+1]=a.y-ny*w;pos[vi+2]=a.z-nz*w;
+    // v1: b - normal*w
+    pos[vi+3]=b.x-nx*w;pos[vi+4]=b.y-ny*w;pos[vi+5]=b.z-nz*w;
+    // v2: a + normal*w
+    pos[vi+6]=a.x+nx*w;pos[vi+7]=a.y+ny*w;pos[vi+8]=a.z+nz*w;
+    // v3: a + normal*w
+    pos[vi+9]=a.x+nx*w;pos[vi+10]=a.y+ny*w;pos[vi+11]=a.z+nz*w;
+    // v4: b - normal*w
+    pos[vi+12]=b.x-nx*w;pos[vi+13]=b.y-ny*w;pos[vi+14]=b.z-nz*w;
+    // v5: b + normal*w
+    pos[vi+15]=b.x+nx*w;pos[vi+16]=b.y+ny*w;pos[vi+17]=b.z+nz*w;
+    offset+=6;
+  }
+  return offset;
+}
+
+/** Generate all bolts and write to geometry buffer */
+function regenerateLightning(){
+  const pos=lnGeo.attributes.position.array;
+  const count=Math.min(Math.round(P.arcCount),LN_MAX_ARCS);
+  let vi=0;
+  for(let a=0;a<count;a++){
+    // Random start/end on sphere surface
+    const ang1=(a/count)*Math.PI*2*P.arcSpread+Math.random()*0.3;
+    const ang2=ang1+0.5+Math.random()*P.arcSpread;
+    const r=1.05;// slightly outside sphere surface
+    const start={x:Math.cos(ang1)*r,y:(Math.random()-0.5)*r,z:Math.sin(ang1)*r};
+    const end={x:Math.cos(ang2)*r,y:(Math.random()-0.5)*r,z:Math.sin(ang2)*r};
+    const pts=midpointDisplace(start,end,5,P.arcNoise);
+    // Resample to LN_SEGS points
+    const resampled=[];
+    for(let i=0;i<=LN_SEGS;i++){
+      const f=i/LN_SEGS*(pts.length-1);
+      const idx=Math.floor(f),frac=f-idx;
+      const p0=pts[Math.min(idx,pts.length-1)],p1=pts[Math.min(idx+1,pts.length-1)];
+      resampled.push({x:p0.x+(p1.x-p0.x)*frac,y:p0.y+(p1.y-p0.y)*frac,z:p0.z+(p1.z-p0.z)*frac});
+    }
+    vi=writeBoltToBuffer(pos,vi,resampled,P.arcWidth);
+    // Branches
+    for(let b=0;b<LN_BRANCHES;b++){
+      if(Math.random()>P.arcBranch){
+        // Empty branch — write degenerate triangles
+        for(let s=0;s<LN_BSEGS*6;s++){pos[(vi+s)*3]=0;pos[(vi+s)*3+1]=0;pos[(vi+s)*3+2]=0;}
+        vi+=LN_BSEGS*6;continue;
+      }
+      const splitIdx=Math.floor(Math.random()*resampled.length*0.7)+Math.floor(resampled.length*0.15);
+      const sp=resampled[splitIdx];
+      const bEnd={x:sp.x+(Math.random()-0.5)*P.arcNoise*2,y:sp.y+(Math.random()-0.5)*P.arcNoise*2,z:sp.z+(Math.random()-0.5)*P.arcNoise*2};
+      const bPts=midpointDisplace(sp,bEnd,3,P.arcNoise*0.6);
+      const bResampled=[];
+      for(let i=0;i<=LN_BSEGS;i++){
+        const f=i/LN_BSEGS*(bPts.length-1);
+        const idx=Math.floor(f),frac=f-idx;
+        const p0=bPts[Math.min(idx,bPts.length-1)],p1=bPts[Math.min(idx+1,bPts.length-1)];
+        bResampled.push({x:p0.x+(p1.x-p0.x)*frac,y:p0.y+(p1.y-p0.y)*frac,z:p0.z+(p1.z-p0.z)*frac});
+      }
+      vi=writeBoltToBuffer(pos,vi,bResampled,P.arcWidth*0.4);
+    }
+  }
+  // Zero remaining
+  for(let i=vi*3;i<pos.length;i++)pos[i]=0;
+  lnGeo.attributes.position.needsUpdate=true;
+  lnGeo.setDrawRange(0,vi);
+}
+
+const lnGeo=buildLnGeo();
+const lnVS=`attribute float aSide,aT;varying float vSide,vT;
+void main(){vSide=aSide;vT=aT;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
+const lnFS=`precision highp float;varying float vSide,vT;
+uniform vec3 uCol1,uCol2,uCol3;uniform float uGlowBase,uTime;
+void main(){
+  float d=abs(vSide);float core=exp(-d*d*8.);float glow=exp(-d*d*2.);
+  float energy=mix(glow,core,0.6);
+  vec3 col=mix(uCol1*1.5,uCol2,d*0.8);col=mix(col,uCol3,smoothstep(0.3,0.8,d));
+  col+=vec3(1.,.9,.8)*core*0.5;col*=uGlowBase;
+  float alpha=energy*(1.-.7*pow(abs(vT*2.-1.),2.));
+  alpha*=0.8+0.2*sin(vT*30.+uTime*20.);
+  gl_FragColor=vec4(col,alpha);
+}`;
+const lnMat=new THREE.ShaderMaterial({vertexShader:lnVS,fragmentShader:lnFS,uniforms:{uCol1:U.uCol1,uCol2:U.uCol2,uCol3:U.uCol3,uGlowBase:U.uGlowBase,uTime:{value:0}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
+const lnMesh=new THREE.Mesh(lnGeo,lnMat);lnMesh.visible=false;lnMesh.frustumCulled=false;scene.add(lnMesh);
+let lnLastFlick=0;
+
 const light=new THREE.PointLight(0xff5500,2.5,12);scene.add(light);
 
 // SCENE OBJECTS — ground plane, starfield
@@ -6653,6 +6818,9 @@ compositeMat.uniforms.uHazeIntensity.value=P.hazeIntensity;compositeMat.uniforms
   pU.uPartGravity.value   = P.partGravity || 0;     pU.uPartSizeEnd.value    = P.partSizeEnd || 0.1;
   pU.uPartTrail.value     = P.partTrail || 0;
 pGeo.setDrawRange(0,Math.max(0,Math.round(P.partCount))*6);sphereMesh.visible=renderMode==='mesh'&&P.showSphere;pMesh.visible=renderMode==='mesh'&&P.showParticles;
+lnMesh.visible=renderMode==='mesh'&&P.showLightning;
+document.getElementById('toggleLn').textContent=P.showLightning?'✓':'✗';
+document.getElementById('toggleLn').className='toggle'+(P.showLightning?'':' off');
 // Layer 2
 syncLayerUniforms(U2,P.layer2);U2.uLayerOpacity.value=P.layer2.layerOpacity;
 L2Mat.blending=P.layer2.blendMode===1?THREE.AdditiveBlending:P.layer2.blendMode===2?THREE.MultiplyBlending:THREE.NormalBlending;
@@ -6672,6 +6840,7 @@ document.getElementById('toggleB').textContent=P.showParticles?'✓':'✗';docum
 updateLayerBarUI();if(renderMode==='sdf')sdfUpdateShader();}
 window.toggleSphere=function(){pushUndo();P.showSphere=!P.showSphere;updateAll();updateLayerBarUI();};
 window.toggleParticles=function(){pushUndo();P.showParticles=!P.showParticles;updateAll();};
+window.toggleLightning=function(){pushUndo();P.showLightning=!P.showLightning;if(P.showLightning)regenerateLightning();updateAll();};
 updateAll();
 
 // ORBIT
@@ -6714,7 +6883,7 @@ async function doPreview(){const cv=document.getElementById('previewCanvas');cv.
 function animate(t) {
   requestAnimationFrame(animate);
   const time = t * .001;
-  U.uTime.value = time; U2.uTime.value = time; U3.uTime.value = time; pU.uTime.value = time;light.intensity = LIGHT_BASE + Math.sin(time * LIGHT_FREQ) * LIGHT_FLICKER;animateSceneObjects(time);if (!drag && !camLocked && autoRotate) angles.theta += ORBIT_SPEED;
+  U.uTime.value = time; U2.uTime.value = time; U3.uTime.value = time; pU.uTime.value = time;lnMat.uniforms.uTime.value=time;if(P.showLightning&&time-lnLastFlick>1/Math.max(P.arcSpeed,0.5)){lnLastFlick=time;regenerateLightning();}light.intensity = LIGHT_BASE + Math.sin(time * LIGHT_FREQ) * LIGHT_FLICKER;animateSceneObjects(time);if (!drag && !camLocked && autoRotate) angles.theta += ORBIT_SPEED;
 // SDF uniforms
 if (renderMode === 'sdf') {
     sdfUniforms.uTime.value = time;
@@ -7959,6 +8128,7 @@ function setRenderMode(m){
   sphereMesh.visible=m==='mesh'&&P.showSphere;outlineMesh.visible=m==='mesh'&&P.outlineWidth>0.001&&P.showSphere;
   L2Mesh.visible=m==='mesh'&&P.layer2.layerEnabled;L3Mesh.visible=m==='mesh'&&P.layer3.layerEnabled;
   pMesh.visible=m==='mesh'&&P.showParticles;
+  lnMesh.visible=m==='mesh'&&P.showLightning;
 
   if(m==='sdf')sdfUpdateShader();
   if(m==='bg')bgUpdateShader();

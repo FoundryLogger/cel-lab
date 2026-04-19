@@ -85,6 +85,14 @@ No dependencies. No install. No internet required.
 - 3D simplex noise turbulence
 - Gravity, velocity trail stretching, size-over-life curves
 
+### ⚡ Lightning System
+- Procedural electric arcs using midpoint displacement algorithm
+- Up to 8 arcs with configurable jaggedness, width, and spread
+- Branching bolts that split from main arcs
+- Animated flicker with adjustable speed
+- Uses the same color palette as the material — colors stay in sync
+- Additive blending for natural electric glow
+
 ### ⚡ Motion & Destruction
 - **Path animation** — Linear, Arc/Throw, Orbit trajectories
 - **Flight behavior** — Scale, glow, and spin interpolation
