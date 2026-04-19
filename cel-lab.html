@@ -5982,11 +5982,21 @@ const GEOS = [
 ];
 let customGeo=null;
 /** Import a GLB/GLTF mesh as custom geometry */
-function importMesh(file){if(!file)return;const reader=new FileReader();reader.onload=function(e){const loader=new THREE.GLTFLoader();loader.parse(e.target.result,'',function(gltf){let geo=null;gltf.scene.traverse(child=>{if(child.isMesh&&!geo){geo=child.geometry.clone();
-// Normalize to fit in unit sphere
-geo.computeBoundingSphere();const s=1/geo.boundingSphere.radius;geo.scale(s,s,s);geo.center();
-// Ensure normals exist
-if(!geo.attributes.normal)geo.computeVertexNormals();}});if(geo){customGeo=geo;P.geoType=10;inputs.geoType.value=10;updateAll();syncUI();}},function(err){console.error('GLB parse error:',err);});};reader.readAsArrayBuffer(file);}
+function importMesh(file){if(!file)return;const reader=new FileReader();reader.onload=function(e){const loader=new THREE.GLTFLoader();loader.parse(e.target.result,'',function(gltf){
+const geos=[];gltf.scene.traverse(child=>{if(child.isMesh){const g=child.geometry.clone();child.updateWorldMatrix(true,false);g.applyMatrix4(child.matrixWorld);geos.push(g);}});
+if(!geos.length)return;
+// Merge all meshes into one geometry
+let geo;
+if(geos.length===1){geo=geos[0];}else{
+  const arrays={position:[],normal:[]};let totalVerts=0;
+  geos.forEach(g=>{if(!g.attributes.normal)g.computeVertexNormals();const p=g.attributes.position,n=g.attributes.normal;
+    if(g.index){const idx=g.index;for(let i=0;i<idx.count;i++){const vi=idx.getX(i);arrays.position.push(p.getX(vi),p.getY(vi),p.getZ(vi));arrays.normal.push(n.getX(vi),n.getY(vi),n.getZ(vi));totalVerts++;}}
+    else{for(let i=0;i<p.count;i++){arrays.position.push(p.getX(i),p.getY(i),p.getZ(i));arrays.normal.push(n.getX(i),n.getY(i),n.getZ(i));totalVerts++;}}});
+  geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(arrays.position),3));geo.setAttribute('normal',new THREE.BufferAttribute(new Float32Array(arrays.normal),3));}
+// Normalize to fit viewport
+geo.computeBoundingBox();const bb=geo.boundingBox;const bSize=new THREE.Vector3();bb.getSize(bSize);const maxDim=Math.max(bSize.x,bSize.y,bSize.z);const s=2/maxDim;geo.scale(s,s,s);geo.center();
+if(!geo.attributes.normal)geo.computeVertexNormals();
+if(geo){customGeo=geo;P.geoType=10;inputs.geoType.value=10;updateAll();syncUI();}},function(err){console.error('GLB parse error:',err);});};reader.readAsArrayBuffer(file);}
 let sphereMesh=new THREE.Mesh(GEOS[0](),sphereMat);scene.add(sphereMesh);
 // Normal map material (shares vertex shader + uniforms, different fragment)
 const normalMat=new THREE.ShaderMaterial({vertexShader:sphereVS,fragmentShader:normalFS,uniforms:U,side:THREE.DoubleSide,transparent:true});
@@ -6896,7 +6906,7 @@ let drag=false,prev={x:0,y:0},angles={theta:0,phi:Math.PI/2},radius=5,camLocked=
 renderer.domElement.addEventListener('mousedown',e=>{drag=true;prev={x:e.clientX,y:e.clientY};});
 window.addEventListener('mouseup',()=>drag=false);
 window.addEventListener('mousemove',e=>{if(!drag||camLocked)return;angles.theta-=(e.clientX-prev.x)*.005;angles.phi=Math.max(.3,Math.min(2.8,angles.phi+(e.clientY-prev.y)*.005));prev={x:e.clientX,y:e.clientY};});
-renderer.domElement.addEventListener('wheel',e=>{radius=Math.max(2,Math.min(12,radius+e.deltaY*.01));});
+renderer.domElement.addEventListener('wheel',e=>{radius=Math.max(1,Math.min(20,radius+e.deltaY*.01));});
 renderer.domElement.addEventListener('touchstart',e=>{drag=true;prev={x:e.touches[0].clientX,y:e.touches[0].clientY};});
 window.addEventListener('touchend',()=>drag=false);
 window.addEventListener('touchmove',e=>{if(!drag||camLocked)return;angles.theta-=(e.touches[0].clientX-prev.x)*.005;angles.phi=Math.max(.3,Math.min(2.8,angles.phi+(e.touches[0].clientY-prev.y)*.005));prev={x:e.touches[0].clientX,y:e.touches[0].clientY};});
