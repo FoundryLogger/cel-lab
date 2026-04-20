@@ -4352,6 +4352,7 @@ const SECTION_PARAMS={
   'shape-params':['stretchY','taper','noisePow','noiseWarp','asymX','asymZ','profileBot','profileMid','profileTop','twist','morphBlend'],
   'flow-params':['flowSpeed','flowNoiseScale'],
   'band-params':['thresh1','thresh2','thresh3','thresh4','distMin','distRange','shadingSoft'],
+  'color-params':['col1','col2','col3','col4','col5'],
   'edge-params':['edgeScale','edgeAmount','edgeDetail','overlayScale','overlayMix'],
   'emit-params':['glowBase','glowCore','rimIntensity','rimPower','iriIntensity','iriShift','emissIntensity','emissScale','emissThresh','sssIntensity','sssPower'],
   'post-params':['bloomIntensity','bloomThreshold','chromaAb','vignette','contrast','saturation','ppGrain','ppSharpen','ppLensDist','ppScanlines'],
@@ -5154,7 +5155,7 @@ prC.appendChild(diceBtn);
 /** Randomize a single section's parameters */
 function randomizeSection(sectionId){
   const keys=SECTION_PARAMS[sectionId];if(!keys)return;
-  pushUndo();
+  pushUndo();let _secRandPalette=null;
   keys.forEach(k=>{
     const el=inputs[k];if(!el)return;
     if(el.type==='range'){
@@ -5162,8 +5163,26 @@ function randomizeSection(sectionId){
       const v=mn+Math.random()*(mx-mn);
       P[k]=Math.round(v/st)*st;
     }else if(el.type==='color'){
-      const h=Math.random()*360,s=40+Math.random()*40,l=30+Math.random()*40;
-      P[k]='#'+[0,120,240].map(o=>{const c=Math.round((Math.cos((h+o)*Math.PI/180)*0.5+0.5)*s/100*255*(l/50));return Math.max(0,Math.min(255,c)).toString(16).padStart(2,'0');}).join('');
+      if(!_secRandPalette){
+        // Generate coherent palette once per randomize call
+        const bh=Math.random()*360,bs=50+Math.random()*35,bl=40+Math.random()*30;
+        const type=Math.floor(Math.random()*3);// 0=analogous 1=complementary 2=mono
+        _secRandPalette=[];
+        for(let i=0;i<5;i++){
+          let h=bh,s=bs,l=bl;
+          if(type===0)h=bh+(i-2)*25+Math.random()*10;// analogous
+          else if(type===1)h=bh+(i%2===0?0:180)+Math.random()*30;// complementary
+          // mono: same hue
+          s=Math.max(20,Math.min(90,s+(Math.random()-0.5)*20));
+          l=Math.max(15,Math.min(85,bl-i*12+Math.random()*8));// darker toward tips
+          h=((h%360)+360)%360;
+          const c=`hsl(${Math.round(h)},${Math.round(s)}%,${Math.round(l)}%)`;
+          const d=document.createElement('div');d.style.color=c;document.body.appendChild(d);
+          const rgb=getComputedStyle(d).color.match(/\d+/g);document.body.removeChild(d);
+          _secRandPalette.push('#'+rgb.map(v=>(+v).toString(16).padStart(2,'0')).join(''));
+        }
+      }
+      P[k]=_secRandPalette.shift()||'#ffffff';
     }
   });
   syncUI();updateAll();
@@ -5171,7 +5190,13 @@ function randomizeSection(sectionId){
 // Inject dice buttons into section headers
 Object.keys(SECTION_PARAMS).forEach(id=>{
   const body=document.getElementById(id);if(!body)return;
-  const head=body.previousElementSibling;if(!head||!head.classList.contains('section-head'))return;
+  // Find section-head: walk up to find .section then get its .section-head
+  let head=body.previousElementSibling;
+  if(!head||!head.classList.contains('section-head')){
+    const sec=body.closest('.section');
+    if(sec)head=sec.querySelector('.section-head');
+  }
+  if(!head)return;
   const btn=document.createElement('button');btn.className='section-dice';btn.textContent='\u{1F3B2}';btn.title='Randomize this section';
   btn.addEventListener('click',e=>{e.stopPropagation();randomizeSection(id);});
   head.appendChild(btn);
