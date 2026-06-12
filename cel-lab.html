@@ -4470,7 +4470,7 @@ const DEFAULTS={
   trailAmount:0,trailDecay:0.9,shadingSoft:0,
   iriIntensity:0,iriShift:1.0,
   emissScale:3.0,emissThresh:0.6,emissIntensity:0,emissColor:'#ff4400',
-  overlayType:0,overlayScale:30,overlayMix:0,
+  overlayType:0,overlayScale:30,overlayMix:0,alchemRings:3,alchemPoly:1,alchemRadials:6,alchemStar:0,alchemDetail:0.5,alchemRotation:0,alchemThick:0.015,
   sssIntensity:0,sssPower:2.0,sssColor:'#ff4422',
   hazeIntensity:0,hazeScale:3.0,hazeSpeed:1.0,ppToneMap:0,ppGrain:0,ppGrainSize:1.0,ppGodRays:0,ppGodRayDecay:0.96,ppShadowTint:'#000000',ppHighTint:'#ffffff',ppSplitTone:0,ppSharpen:0,ppLensDist:0,ppLetterbox:0,ppScanlines:0,
   morphTarget:0,morphBlend:0,
@@ -4784,8 +4784,15 @@ inputs.shadingSoft=addLayerSlider(bC,'shadingSoft','Softness',0,1,0.01);
 const eC=document.getElementById('edge-params');
 inputs.edgeScale=addLayerSlider(eC,'edgeScale','Scale',-10,15,0.1);inputs.edgeAmount=addLayerSlider(eC,'edgeAmount','Amount',-0.5,0.5,0.005);
 inputs.edgeDetail=addLayerSlider(eC,'edgeDetail','Detail',-0.3,0.3,0.005);
-inputs.overlayType=addLayerSelect(eC,'overlayType','Overlay',['None','Dots','Hatching','Crosshatch']);
+inputs.overlayType=addLayerSelect(eC,'overlayType','Overlay',['None','Dots','Hatching','Crosshatch','Alchemic']);
 inputs.overlayScale=addLayerSlider(eC,'overlayScale','Ovr Scale',5,80,1);inputs.overlayMix=addLayerSlider(eC,'overlayMix','Ovr Mix',0,1,0.01);
+inputs.alchemRings=addSlider(eC,'alchemRings','Alch Rings',1,5,1);
+inputs.alchemPoly=addSelect(eC,'alchemPoly','Alch Polygon',['None','Triangle','Square','Pentagon','Hexagon','Octagon']);
+inputs.alchemRadials=addSlider(eC,'alchemRadials','Alch Radials',0,12,1);
+inputs.alchemStar=addSlider(eC,'alchemStar','Alch Star',0,1,0.05);
+inputs.alchemDetail=addSlider(eC,'alchemDetail','Alch Detail',0,1,0.05);
+inputs.alchemRotation=addSlider(eC,'alchemRotation','Alch Rotate',0,6.28,0.05);
+inputs.alchemThick=addSlider(eC,'alchemThick','Alch Width',0.005,0.05,0.001);
 const mC=document.getElementById('emit-params');
 inputs.glowBase=addLayerSlider(mC,'glowBase','Glow Base',-1,5,0.05);inputs.glowCore=addLayerSlider(mC,'glowCore','Glow Core',-2,4,0.05);
 inputs.rimIntensity=addLayerSlider(mC,'rimIntensity','Rim Int',0,2,0.05);inputs.rimPower=addLayerSlider(mC,'rimPower','Rim Power',0.5,8,0.1);
@@ -5347,7 +5354,7 @@ const ARCHETYPES={
       chromaAb:[0.003,0.015], vignette:[0.3,0.8],
     },
     rimColorFromPalette:true, emissFromPalette:true,
-    morphChance:0.15, iriChance:0.3, overlayChance:0.05,
+    morphChance:0.15, iriChance:0.3, overlayChance:0.05, alchemChance:0.25,
     hazeChance:0.1, trailChance:0.2, rampChance:0.25,
     emissChance:0.4, sssChance:0.2,
   },
@@ -5384,7 +5391,7 @@ const ARCHETYPES={
       contrast:[0.8,1.0], saturation:[0.7,1.0],
     },
     sssFromPalette:true, rimColorFromPalette:true,
-    morphChance:0.2, iriChance:0.25, overlayChance:0,
+    morphChance:0.2, iriChance:0.25, overlayChance:0, alchemChance:0.3,
     hazeChance:0.7, trailChance:0.15, rampChance:0.35,
     emissChance:0.05,
   },
@@ -5459,7 +5466,7 @@ const ARCHETYPES={
       alphaCutoff:[0,0.15], morphBlend:[0,0.3],
     },
     sssFromPalette:true, rimColorFromPalette:true,
-    morphChance:0.3, iriChance:0.1, overlayChance:0,
+    morphChance:0.3, iriChance:0.1, overlayChance:0, alchemChance:0.2,
     hazeChance:0.15, trailChance:0.2, rampChance:0.15,
     emissChance:0.15,
   },
@@ -5575,6 +5582,18 @@ if(Math.random()<achance('overlayChance',0.1)){
   pr.overlayType=rp(Array.isArray(ots)?ots:[ots]);
   pr.overlayMix=ap('overlayMix',0.1,0.4);
   pr.overlayScale=ap('overlayScale',15,50);
+}
+// Alchemic circle (only on disc geometry)
+if(Math.random()<achance('alchemChance',0.08)){
+  pr.geoType=9;// Force disc
+  pr.overlayType=4;pr.overlayMix=rr(0.4,0.9);pr.overlayScale=5;
+  pr.alchemRings=Math.floor(rr(2,5));pr.alchemPoly=Math.floor(rr(0,6));
+  pr.alchemRadials=Math.floor(rr(0,12));pr.alchemStar=Math.random()<0.5?rr(0.3,1):0;
+  pr.alchemDetail=rr(0.2,0.8);pr.alchemRotation=rr(0,6.28);pr.alchemThick=rr(0.008,0.035);
+  // Flatten displacement for clean circle
+  pr.disp1Amp=rr(0,0.03);pr.disp2Amp=rr(0,0.01);pr.disp3Amp=0;
+  pr.stretchY=1;pr.taper=0;pr.upBias=0;
+  pr.flowSpeed=rr(0.1,0.5);
 }
 
 // Colors
@@ -5865,6 +5884,7 @@ uniform float uShadingSoft;
 uniform float uIriIntensity,uIriShift;
 uniform float uEmissScale,uEmissThresh,uEmissIntensity;uniform vec3 uEmissColor;
 uniform int uOverlayType;uniform float uOverlayScale,uOverlayMix;
+uniform float uAlchemRings,uAlchemRadials,uAlchemStar,uAlchemDetail,uAlchemRotation,uAlchemThick;uniform int uAlchemPoly;
 uniform float uSSSIntensity,uSSSPower;uniform vec3 uSSSColor;
 uniform sampler2D uTexMap;uniform float uTexMix,uTexTile;uniform int uTexProjection,uTexBlendMode;
 float bandEdge(float thresh,float tv){float s=max(uShadingSoft*0.15,0.001);return mix(step(thresh,tv),smoothstep(thresh-s,thresh+s,tv),min(uShadingSoft,1.));}
@@ -5897,6 +5917,116 @@ if(uOverlayType>0&&uOverlayMix>0.001){vec2 sc=vPos.xy*uOverlayScale;float pat=0.
 if(uOverlayType==1){pat=step(0.6,sin(sc.x*6.2832)*sin(sc.y*6.2832));}
 else if(uOverlayType==2){pat=step(0.4,sin((sc.x+sc.y)*6.2832)*0.5+0.5);}
 else if(uOverlayType==3){float h1=step(0.4,sin((sc.x+sc.y)*6.2832)*0.5+0.5);float h2=step(0.4,sin((sc.x-sc.y)*6.2832)*0.5+0.5);pat=max(h1,h2);}
+else if(uOverlayType==4){
+  vec2 ac=vPos.xy;float cr=cos(uAlchemRotation),sr=sin(uAlchemRotation);ac=vec2(ac.x*cr-ac.y*sr,ac.x*sr+ac.y*cr);
+  float rd=length(ac),ag=atan(ac.y,ac.x),lw=uAlchemThick;
+  float maxR=1.1;float ringStep=maxR/max(uAlchemRings,1.);
+  float rot1=uAlchemRotation*0.5,rot2=uAlchemRotation*0.5+3.14159/max(uAlchemRings,1.);
+  int sides=uAlchemPoly==1?3:uAlchemPoly==2?4:uAlchemPoly==3?5:uAlchemPoly==4?6:8;
+
+  // ── Concentric rings (outer thick, inner thin, with double-line on outermost)
+  for(int i=0;i<5;i++){if(float(i)>=uAlchemRings)break;
+    float rr=ringStep*(float(i)+1.);
+    float rw=(i==0||float(i)>=uAlchemRings-1.)?lw*1.8:lw;
+    pat=max(pat,1.-smoothstep(0.,lw,abs(rd-rr)-rw*0.5));
+    // Double line on outer ring
+    if(float(i)>=uAlchemRings-1.){pat=max(pat,1.-smoothstep(0.,lw*0.6,abs(rd-rr+lw*3.)-lw*0.4));}
+  }
+
+  // ── Primary polygon (inscribed in middle ring)
+  if(uAlchemPoly>0){float pR=ringStep*ceil(uAlchemRings*0.5);float sg=6.2832/float(sides);
+    for(int i=0;i<8;i++){if(i>=sides)break;
+      float a1=float(i)*sg+rot1;float a2=float(i+1)*sg+rot1;
+      vec2 v1=vec2(cos(a1),sin(a1))*pR,v2=vec2(cos(a2),sin(a2))*pR;
+      vec2 pa=ac-v1,ba=v2-v1;float hh=clamp(dot(pa,ba)/dot(ba,ba),0.,1.);
+      pat=max(pat,1.-smoothstep(0.,lw,length(pa-ba*hh)-lw*0.5));
+    }
+    // ── Secondary inner polygon (rotated, smaller)
+    if(uAlchemDetail>0.2){float pR2=pR*0.55;
+      for(int i=0;i<8;i++){if(i>=sides)break;
+        float a1=float(i)*sg+rot2;float a2=float(i+1)*sg+rot2;
+        vec2 v1=vec2(cos(a1),sin(a1))*pR2,v2=vec2(cos(a2),sin(a2))*pR2;
+        vec2 pa=ac-v1,ba=v2-v1;float hh=clamp(dot(pa,ba)/dot(ba,ba),0.,1.);
+        pat=max(pat,(1.-smoothstep(0.,lw*0.8,length(pa-ba*hh)-lw*0.3))*uAlchemDetail);
+      }
+    }
+  }
+
+  // ── Radial lines (clipped between rings, with tick marks)
+  if(uAlchemRadials>0.){
+    float iR=ringStep*0.8,oR=ringStep*uAlchemRings;
+    float radSeg=6.2832/uAlchemRadials;
+    if(rd>iR&&rd<oR){float ra=mod(ag+3.14159,radSeg);pat=max(pat,1.-smoothstep(0.,lw,abs(ra*rd)-lw*0.5));}
+    // Tick marks on outer ring
+    if(uAlchemDetail>0.3){float tickR=ringStep*uAlchemRings;float tickSeg=6.2832/(uAlchemRadials*4.);
+      if(rd>tickR-lw*4.&&rd<tickR){float ta=mod(ag,tickSeg);pat=max(pat,(1.-smoothstep(0.,lw*0.5,abs(ta*rd)-lw*0.3))*uAlchemDetail*0.6);}
+    }
+  }
+
+  // ── Star (connect every-other vertex)
+  if(uAlchemStar>0.01){int sn=max(sides,3);float sR=ringStep*ceil(uAlchemRings*0.5);float sg=6.2832/float(sn);
+    for(int i=0;i<8;i++){if(i>=sn)break;
+      float a1=float(i)*sg+rot1;float a2=float(i+2)*sg+rot1;
+      vec2 v1=vec2(cos(a1),sin(a1))*sR,v2=vec2(cos(a2),sin(a2))*sR;
+      vec2 pa=ac-v1,ba=v2-v1;float hh=clamp(dot(pa,ba)/dot(ba,ba),0.,1.);
+      pat=max(pat,(1.-smoothstep(0.,lw,length(pa-ba*hh)-lw*0.3))*uAlchemStar);
+    }
+    // Inner star (smaller, rotated)
+    if(uAlchemDetail>0.4){float sR2=sR*0.45;
+      for(int i=0;i<8;i++){if(i>=sn)break;
+        float a1=float(i)*sg+rot2;float a2=float(i+2)*sg+rot2;
+        vec2 v1=vec2(cos(a1),sin(a1))*sR2,v2=vec2(cos(a2),sin(a2))*sR2;
+        vec2 pa=ac-v1,ba=v2-v1;float hh=clamp(dot(pa,ba)/dot(ba,ba),0.,1.);
+        pat=max(pat,(1.-smoothstep(0.,lw*0.7,length(pa-ba*hh)-lw*0.2))*uAlchemStar*uAlchemDetail);
+      }
+    }
+  }
+
+  // ── Detail layer: vertex decorations, arcs, sub-rings, rune marks
+  if(uAlchemDetail>0.01){
+    int dn=uAlchemPoly>0?sides:max(int(uAlchemRadials),3);
+    float dR=ringStep*ceil(uAlchemRings*0.5);float dsg=6.2832/float(max(dn,3));
+    // Decorated circles at polygon vertices
+    for(int i=0;i<12;i++){if(i>=dn)break;
+      float da=float(i)*dsg+rot1;vec2 dp=vec2(cos(da),sin(da))*dR;float dd=length(ac-dp);
+      // Outer ring at vertex
+      pat=max(pat,(1.-smoothstep(0.,lw,abs(dd-lw*3.5)-lw*0.5))*uAlchemDetail);
+      // Inner dot
+      pat=max(pat,(1.-smoothstep(0.,lw*1.5,dd))*uAlchemDetail*0.6);
+      // Tiny cross at vertex
+      vec2 lc=ac-dp;float crs=min(abs(lc.x),abs(lc.y));
+      pat=max(pat,(1.-smoothstep(0.,lw*0.6,crs))*step(dd,lw*4.)*uAlchemDetail*0.5);
+    }
+    // Outer decoration circles (on outer ring, between radials)
+    if(uAlchemRadials>0.&&uAlchemDetail>0.3){float outerR=ringStep*uAlchemRings;float odsg=6.2832/(uAlchemRadials*2.);
+      for(int i=0;i<24;i++){if(float(i)>=uAlchemRadials*2.)break;
+        float oa=float(i)*odsg+rot1+odsg*0.5;vec2 op=vec2(cos(oa),sin(oa))*(outerR-lw*5.);float odd=length(ac-op);
+        pat=max(pat,(1.-smoothstep(0.,lw*0.6,abs(odd-lw*1.5)-lw*0.3))*uAlchemDetail*0.5);
+      }
+    }
+    // Sub-rings between main rings
+    for(int i=0;i<4;i++){if(float(i)>=uAlchemRings-1.)break;
+      float subr=ringStep*(float(i)+1.5);
+      pat=max(pat,(1.-smoothstep(0.,lw*0.6,abs(rd-subr)-lw*0.25))*uAlchemDetail*0.35);
+    }
+    // Partial arcs between rings (decorative)
+    if(uAlchemDetail>0.5){
+      for(int i=0;i<3;i++){if(float(i)>=uAlchemRings-1.)break;
+        float arcR=ringStep*(float(i)+1.25);float arcSpan=0.8;float arcOff=float(i)*1.5+rot1;
+        float aa=mod(ag-arcOff,6.2832);
+        if(aa<arcSpan||aa>6.2832-arcSpan){pat=max(pat,(1.-smoothstep(0.,lw*0.5,abs(rd-arcR)-lw*0.3))*uAlchemDetail*0.4);}
+      }
+    }
+  }
+
+  // ── Center symbol (circle + cross + inner circle)
+  pat=max(pat,1.-smoothstep(0.,lw*1.2,abs(rd-ringStep*0.3)-lw));
+  pat=max(pat,1.-smoothstep(0.,lw,abs(rd-ringStep*0.12)-lw*0.5));
+  float cx=min(abs(ac.x),abs(ac.y));
+  pat=max(pat,(1.-smoothstep(0.,lw,cx))*step(rd,ringStep*0.35));
+  // Center dot
+  pat=max(pat,1.-smoothstep(0.,lw*2.,rd));
+}
 col=mix(col,col*(1.-pat*0.6*(1.-t+0.2)),uOverlayMix);}
 float alpha=1.;if(uAlphaCutoff>0.001){float dv;
 if(uDissolveMode==1){dv=voronoi(vPos*4.)*.5+.5;}
@@ -5979,6 +6109,7 @@ const U = {
   uOverlayType:{value:0},
   uOverlayScale:{value:30},
   uOverlayMix:{value:0},
+  uAlchemRings:{value:3},uAlchemPoly:{value:1},uAlchemRadials:{value:6},uAlchemStar:{value:0},uAlchemDetail:{value:0.5},uAlchemRotation:{value:0},uAlchemThick:{value:0.015},
   uSSSIntensity:{value:0},
   uSSSPower:{value:2.0},
   uSSSColor:{value:new THREE.Vector3(...hexToV('#ff4422'))},
@@ -6087,6 +6218,7 @@ function makeLayerUniforms(lp) {
     uOverlayType:{value:lp.overlayType||0},
     uOverlayScale:{value:lp.overlayScale||30},
     uOverlayMix:{value:lp.overlayMix||0},
+    uAlchemRings:{value:lp.alchemRings||3},uAlchemPoly:{value:lp.alchemPoly||0},uAlchemRadials:{value:lp.alchemRadials||0},uAlchemStar:{value:lp.alchemStar||0},uAlchemDetail:{value:lp.alchemDetail||0},uAlchemRotation:{value:lp.alchemRotation||0},uAlchemThick:{value:lp.alchemThick||0.015},
     uSSSIntensity:{value:lp.sssIntensity||0},
     uSSSPower:{value:lp.sssPower||2.0},
     uSSSColor:{value:new THREE.Vector3(...hexToV(lp.sssColor||'#ff4422'))},
@@ -6820,6 +6952,8 @@ function syncLayerUniforms(u, lp) {
   u.uOverlayType.value  = lp.overlayType || 0;
   u.uOverlayScale.value = lp.overlayScale || 30;
   u.uOverlayMix.value   = lp.overlayMix || 0;
+  u.uAlchemRings.value=lp.alchemRings||3;u.uAlchemPoly.value=lp.alchemPoly||0;u.uAlchemRadials.value=lp.alchemRadials||0;
+  u.uAlchemStar.value=lp.alchemStar||0;u.uAlchemDetail.value=lp.alchemDetail||0;u.uAlchemRotation.value=lp.alchemRotation||0;u.uAlchemThick.value=lp.alchemThick||0.015;
 
   // Subsurface scattering
   u.uSSSIntensity.value = lp.sssIntensity || 0;
@@ -7507,6 +7641,13 @@ uniform vec3 emiss_color : source_color = vec3(${c('emissColor').join(', ')});
 uniform int overlay_type = ${p.overlayType};
 uniform float overlay_scale : hint_range(1.0, 100.0) = ${p.overlayScale.toFixed(2)};
 uniform float overlay_mix : hint_range(0.0, 1.0) = ${p.overlayMix.toFixed(2)};
+uniform float alchem_rings = ${p.alchemRings.toFixed(1)};
+uniform int alchem_poly = ${p.alchemPoly};
+uniform float alchem_radials = ${p.alchemRadials.toFixed(1)};
+uniform float alchem_star : hint_range(0.0, 1.0) = ${p.alchemStar.toFixed(2)};
+uniform float alchem_detail : hint_range(0.0, 1.0) = ${p.alchemDetail.toFixed(2)};
+uniform float alchem_rotation : hint_range(0.0, 6.28) = ${p.alchemRotation.toFixed(2)};
+uniform float alchem_thick : hint_range(0.005, 0.05) = ${p.alchemThick.toFixed(3)};
 uniform float alpha_cutoff : hint_range(0.0, 1.0) = ${p.alphaCutoff.toFixed(2)};
 uniform int dissolve_mode = ${p.dissolveMode||0};
 uniform int morph_target = ${p.morphTarget||0};
@@ -7628,6 +7769,19 @@ void fragment() {
             float h1 = step(0.4, sin((sc.x + sc.y) * 6.2832) * 0.5 + 0.5);
             float h2 = step(0.4, sin((sc.x - sc.y) * 6.2832) * 0.5 + 0.5);
             pat = max(h1, h2);
+        } else if (overlay_type == 4) {
+            vec2 ac = v_pos.xy; float cra = cos(alchem_rotation); float sra = sin(alchem_rotation);
+            ac = vec2(ac.x*cra - ac.y*sra, ac.x*sra + ac.y*cra);
+            float rd = length(ac); float ag = atan(ac.y, ac.x); float lw = alchem_thick;
+            float maxR = 1.1; float rs = maxR / max(alchem_rings, 1.0);
+            int sides = alchem_poly==1?3 : alchem_poly==2?4 : alchem_poly==3?5 : alchem_poly==4?6 : 8;
+            float rot1 = alchem_rotation*0.5; float rot2 = rot1 + 3.14159/max(alchem_rings,1.0);
+            for(int i=0;i<5;i++){if(float(i)>=alchem_rings)break;float rr=rs*(float(i)+1.0);float rw=(i==0||float(i)>=alchem_rings-1.0)?lw*1.8:lw;pat=max(pat,1.0-smoothstep(0.0,lw,abs(rd-rr)-rw*0.5));if(float(i)>=alchem_rings-1.0)pat=max(pat,1.0-smoothstep(0.0,lw*0.6,abs(rd-rr+lw*3.0)-lw*0.4));}
+            if(alchem_poly>0){float pR=rs*ceil(alchem_rings*0.5);float sg=6.2832/float(sides);for(int i=0;i<8;i++){if(i>=sides)break;float a1=float(i)*sg+rot1;float a2=float(i+1)*sg+rot1;vec2 v1=vec2(cos(a1),sin(a1))*pR;vec2 v2=vec2(cos(a2),sin(a2))*pR;vec2 pa=ac-v1;vec2 ba=v2-v1;float hh=clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0);pat=max(pat,1.0-smoothstep(0.0,lw,length(pa-ba*hh)-lw*0.5));}}
+            if(alchem_radials>0.0){float iR=rs*0.8;float oR=rs*alchem_rings;if(rd>iR&&rd<oR){float ra=mod(ag+3.14159,6.2832/alchem_radials);pat=max(pat,1.0-smoothstep(0.0,lw,abs(ra*rd)-lw*0.5));}}
+            if(alchem_star>0.01){int sn=max(sides,3);float sR=rs*ceil(alchem_rings*0.5);float sg=6.2832/float(sn);for(int i=0;i<8;i++){if(i>=sn)break;float a1=float(i)*sg+rot1;float a2=float(i+2)*sg+rot1;vec2 v1=vec2(cos(a1),sin(a1))*sR;vec2 v2=vec2(cos(a2),sin(a2))*sR;vec2 pa=ac-v1;vec2 ba=v2-v1;float hh=clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0);pat=max(pat,(1.0-smoothstep(0.0,lw,length(pa-ba*hh)-lw*0.3))*alchem_star);}}
+            if(alchem_detail>0.01){int dn=alchem_poly>0?sides:max(int(alchem_radials),3);float dR=rs*ceil(alchem_rings*0.5);float dsg=6.2832/float(max(dn,3));for(int i=0;i<12;i++){if(i>=dn)break;float da=float(i)*dsg+rot1;vec2 dp=vec2(cos(da),sin(da))*dR;float dd=length(ac-dp);pat=max(pat,(1.0-smoothstep(0.0,lw,abs(dd-lw*3.5)-lw*0.5))*alchem_detail);pat=max(pat,(1.0-smoothstep(0.0,lw*1.5,dd))*alchem_detail*0.6);}for(int i=0;i<4;i++){if(float(i)>=alchem_rings-1.0)break;float subr=rs*(float(i)+1.5);pat=max(pat,(1.0-smoothstep(0.0,lw*0.6,abs(rd-subr)-lw*0.25))*alchem_detail*0.35);}}
+            pat=max(pat,1.0-smoothstep(0.0,lw*1.2,abs(rd-rs*0.3)-lw));pat=max(pat,1.0-smoothstep(0.0,lw*2.0,rd));
         }
         col = mix(col, col * (1.0 - pat * 0.6 * (1.0 - t + 0.2)), overlay_mix);
     }
@@ -9848,6 +10002,7 @@ uniform float uSSSIntensity, uSSSPower; uniform vec3 uSSSColor;
 uniform float uAlphaCutoff, uLayerOpacity;
 uniform int uDissolveMode;
 uniform int uOverlayType; uniform float uOverlayScale, uOverlayMix;
+uniform float uAlchemRings,uAlchemRadials,uAlchemStar,uAlchemDetail,uAlchemRotation,uAlchemThick;uniform int uAlchemPoly;
 
 float bandEdge(float thresh, float tv){
   float s = max(uShadingSoft * 0.15, 0.001);
@@ -9912,6 +10067,17 @@ void main(){
     if(uOverlayType == 1){ pat = step(0.6, sin(sc.x*6.2832)*sin(sc.y*6.2832)); }
     else if(uOverlayType == 2){ pat = step(0.4, sin((sc.x+sc.y)*6.2832)*0.5+0.5); }
     else if(uOverlayType == 3){ float h1=step(0.4,sin((sc.x+sc.y)*6.2832)*0.5+0.5);float h2=step(0.4,sin((sc.x-sc.y)*6.2832)*0.5+0.5);pat=max(h1,h2); }
+    else if(uOverlayType == 4){
+      vec2 ac=vPos.xy;float cra=cos(uAlchemRotation),sra=sin(uAlchemRotation);ac=vec2(ac.x*cra-ac.y*sra,ac.x*sra+ac.y*cra);
+      float rd=length(ac),ag=atan(ac.y,ac.x),lw=uAlchemThick;float mxR=1.1,rs=mxR/max(uAlchemRings,1.);
+      int sides=uAlchemPoly==1?3:uAlchemPoly==2?4:uAlchemPoly==3?5:uAlchemPoly==4?6:8;float rot1=uAlchemRotation*0.5;
+      for(int i=0;i<5;i++){if(float(i)>=uAlchemRings)break;float rr=rs*(float(i)+1.);float rw=(i==0||float(i)>=uAlchemRings-1.)?lw*1.8:lw;pat=max(pat,1.-smoothstep(0.,lw,abs(rd-rr)-rw*0.5));if(float(i)>=uAlchemRings-1.)pat=max(pat,1.-smoothstep(0.,lw*0.6,abs(rd-rr+lw*3.)-lw*0.4));}
+      if(uAlchemPoly>0){float pR=rs*ceil(uAlchemRings*0.5);float sg=6.2832/float(sides);for(int i=0;i<8;i++){if(i>=sides)break;float a1=float(i)*sg+rot1;float a2=float(i+1)*sg+rot1;vec2 v1=vec2(cos(a1),sin(a1))*pR,v2=vec2(cos(a2),sin(a2))*pR;vec2 pa=ac-v1,ba=v2-v1;float hh=clamp(dot(pa,ba)/dot(ba,ba),0.,1.);pat=max(pat,1.-smoothstep(0.,lw,length(pa-ba*hh)-lw*0.5));}}
+      if(uAlchemRadials>0.){float iR=rs*0.8,oR=rs*uAlchemRings;if(rd>iR&&rd<oR){float ra=mod(ag+3.14159,6.2832/uAlchemRadials);pat=max(pat,1.-smoothstep(0.,lw,abs(ra*rd)-lw*0.5));}}
+      if(uAlchemStar>0.01){int sn=max(sides,3);float sR=rs*ceil(uAlchemRings*0.5);float sg=6.2832/float(sn);for(int i=0;i<8;i++){if(i>=sn)break;float a1=float(i)*sg+rot1;float a2=float(i+2)*sg+rot1;vec2 v1=vec2(cos(a1),sin(a1))*sR,v2=vec2(cos(a2),sin(a2))*sR;vec2 pa=ac-v1,ba=v2-v1;float hh=clamp(dot(pa,ba)/dot(ba,ba),0.,1.);pat=max(pat,(1.-smoothstep(0.,lw,length(pa-ba*hh)-lw*0.3))*uAlchemStar);}}
+      if(uAlchemDetail>0.01){int dn=uAlchemPoly>0?sides:max(int(uAlchemRadials),3);float dR=rs*ceil(uAlchemRings*0.5);float dsg=6.2832/float(max(dn,3));for(int i=0;i<12;i++){if(i>=dn)break;float da=float(i)*dsg+rot1;vec2 dp=vec2(cos(da),sin(da))*dR;float dd=length(ac-dp);pat=max(pat,(1.-smoothstep(0.,lw,abs(dd-lw*3.5)-lw*0.5))*uAlchemDetail);pat=max(pat,(1.-smoothstep(0.,lw*1.5,dd))*uAlchemDetail*0.6);}for(int i=0;i<4;i++){if(float(i)>=uAlchemRings-1.)break;float subr=rs*(float(i)+1.5);pat=max(pat,(1.-smoothstep(0.,lw*0.6,abs(rd-subr)-lw*0.25))*uAlchemDetail*0.35);}}
+      pat=max(pat,1.-smoothstep(0.,lw*1.2,abs(rd-rs*0.3)-lw));pat=max(pat,1.-smoothstep(0.,lw*2.,rd));
+    }
     col = mix(col, col*(1.-pat*0.6*(1.-t+0.2)), uOverlayMix);
   }
 
@@ -9982,6 +10148,8 @@ export function createCelShadeMaterial(overrides = {}) {
     morphTarget: ${p.morphTarget||0}, morphBlend: ${p.morphBlend||0},
     // Overlay
     overlayType: ${p.overlayType||0}, overlayScale: ${p.overlayScale||20}, overlayMix: ${p.overlayMix||0},
+    alchemRings: ${p.alchemRings||3}, alchemPoly: ${p.alchemPoly||0}, alchemRadials: ${p.alchemRadials||0},
+    alchemStar: ${p.alchemStar||0}, alchemDetail: ${p.alchemDetail||0}, alchemRotation: ${p.alchemRotation||0}, alchemThick: ${p.alchemThick||0.015},
     // Dissolve
     dissolveMode: ${p.dissolveMode||0},
     // Override with user values
@@ -10049,6 +10217,13 @@ export function createCelShadeMaterial(overrides = {}) {
       uOverlayType:   { value: p.overlayType },
       uOverlayScale:  { value: p.overlayScale },
       uOverlayMix:    { value: p.overlayMix },
+      uAlchemRings:   { value: p.alchemRings },
+      uAlchemPoly:    { value: p.alchemPoly },
+      uAlchemRadials: { value: p.alchemRadials },
+      uAlchemStar:    { value: p.alchemStar },
+      uAlchemDetail:  { value: p.alchemDetail },
+      uAlchemRotation:{ value: p.alchemRotation },
+      uAlchemThick:   { value: p.alchemThick },
       uDissolveMode:  { value: p.dissolveMode },
       uLayerOpacity:  { value: 1.0 },
     },
@@ -10110,6 +10285,11 @@ export function createLayerMaterial(overrides = {}) {
       uEmissIntensity:{value:p.emissIntensity||0}, uEmissColor:{value:hexToVec3(p.emissColor||'#ff4400')},
       uSSSIntensity:{value:p.sssIntensity||0}, uSSSPower:{value:p.sssPower||2},
       uSSSColor:{value:hexToVec3(p.sssColor||'#ff4422')},
+      uMorphTarget:{value:p.morphTarget||0}, uMorphBlend:{value:p.morphBlend||0},
+      uOverlayType:{value:p.overlayType||0}, uOverlayScale:{value:p.overlayScale||20}, uOverlayMix:{value:p.overlayMix||0},
+      uAlchemRings:{value:p.alchemRings||3}, uAlchemPoly:{value:p.alchemPoly||0}, uAlchemRadials:{value:p.alchemRadials||0},
+      uAlchemStar:{value:p.alchemStar||0}, uAlchemDetail:{value:p.alchemDetail||0}, uAlchemRotation:{value:p.alchemRotation||0}, uAlchemThick:{value:p.alchemThick||0.015},
+      uDissolveMode:{value:p.dissolveMode||0}, uAlphaCutoff:{value:p.alphaCutoff||0},
       uLayerOpacity:{value:p.layerOpacity||0.5},
     },
     side: THREE.DoubleSide, transparent: true, depthWrite: false,
@@ -10512,7 +10692,50 @@ export function updateLightning(system, time) {
   if (time - _lnLastT > interval) { _lnLastT = time; system.regenerate(); }
 }
 `:''}`;
-  downloadText(code, exportPrefix()+'-material.js');
+  // FIX export COMPLETO: prima venivano OMESSI i parametri di post-processing (bloom +
+  // color grading) e l'outline. Li appendo come export POST_FX / OUTLINE cosi' il consumer
+  // puo' replicare ESATTAMENTE la resa del lab. Pipeline bloom del lab (vedi composite):
+  //   bright = (max(r,g,b) > bloomThreshold) ? colore : 0 ; blur(bright) ;
+  //   composite: col = scena + blur*bloomIntensity ; poi grading (tone map, contrasto, ...).
+  const postCode = `
+
+// =========================================================
+// Post-FX / Render config (bloom + color grading + outline)
+// Applica questi nel TUO render per la stessa resa del cel-lab.
+// toneMap: 0=none, 1=ACES, 2=Filmic.
+// =========================================================
+export const POST_FX = {
+  bloomIntensity: ${p.bloomIntensity ?? 0},
+  bloomThreshold: ${p.bloomThreshold ?? 0.8},
+  chromaAb: ${p.chromaAb ?? 0},
+  vignette: ${p.vignette ?? 0},
+  contrast: ${p.contrast ?? 1},
+  saturation: ${p.saturation ?? 1},
+  tintColor: '${p.tintColor ?? '#ffffff'}',
+  toneMap: ${p.ppToneMap ?? 0},
+  grain: ${p.ppGrain ?? 0},
+  grainSize: ${p.ppGrainSize ?? 1},
+  godRays: ${p.ppGodRays ?? 0},
+  godRayDecay: ${p.ppGodRayDecay ?? 0.96},
+  shadowTint: '${p.ppShadowTint ?? '#000000'}',
+  highTint: '${p.ppHighTint ?? '#ffffff'}',
+  splitTone: ${p.ppSplitTone ?? 0},
+  sharpen: ${p.ppSharpen ?? 0},
+  lensDist: ${p.ppLensDist ?? 0},
+  letterbox: ${p.ppLetterbox ?? 0},
+  scanlines: ${p.ppScanlines ?? 0},
+  hazeIntensity: ${p.hazeIntensity ?? 0},
+  hazeScale: ${p.hazeScale ?? 1},
+  hazeSpeed: ${p.hazeSpeed ?? 1},
+};
+
+// Outline (silhouette). width 0 = disabilitato.
+export const OUTLINE = {
+  width: ${p.outlineWidth ?? 0},
+  color: '${p.outlineColor ?? '#000000'}',
+};
+`;
+  downloadText(code + postCode, exportPrefix()+'-material.js');
   if(p.geoType===10&&customGlbData){downloadBlob(new Blob([customGlbData],{type:'model/gltf-binary'}),exportPrefix()+'.glb');}
 }
 
